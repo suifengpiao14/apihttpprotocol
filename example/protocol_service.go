@@ -219,10 +219,10 @@ const (
 	Http_header_HSB_OPENAPI_SIGNATURE       = "HSB-OPENAPI-SIGNATURE"
 )
 
-func (p Protocol2Server) UseSignature() Protocol2Server {
+func (p Protocol2Client) UseSignature() Protocol2Client {
 	p.Protocol = p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
-		Stage: apihttpprotocol.StageBuilder,
+		Stage: apihttpprotocol.Stage_befor_send_data,
 		Fn: func(message apihttpprotocol.Message) (apihttpprotocol.Message, error) {
 			sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
 			p.Protocol.Request.Header.Add(Http_header_HSB_OPENAPI_SIGNATURE, sign)
@@ -233,9 +233,9 @@ func (p Protocol2Server) UseSignature() Protocol2Server {
 }
 
 func (p Protocol2Server) UseCheckSignature() Protocol2Server {
-	p.Protocol = p.Protocol.WithResponseMiddleware(apihttpprotocol.MiddlewareFunc{
+	p.Protocol = p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: apihttpprotocol.OrderMax,
-		Stage: apihttpprotocol.StageResponseBuilder,
+		Stage: apihttpprotocol.Stage_recive_data,
 		Fn: func(param apihttpprotocol.Message) (param1 apihttpprotocol.Message, err error) {
 			callerId := param.Header.Get(Http_header_HSB_OPENAPI_CALLERSERVICEID)
 			if callerId == "" {
@@ -282,7 +282,7 @@ func NewSerivceProtocol(callerServiceId string, callerServiceKey string) Protoco
 	response := Response{}
 	protocol := apihttpprotocol.NewProtocol().WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
-		Stage: apihttpprotocol.StageSetData,
+		Stage: apihttpprotocol.Stage_set_data,
 		Fn: func(message apihttpprotocol.Message) (apihttpprotocol.Message, error) {
 			request.Head.Timestamps = cast.ToString(time.Now().Unix()) //这个参数在实际请求时生成
 			request.Head.InvokeId = uuid.New().String()                //这个参数在实际请求时生成

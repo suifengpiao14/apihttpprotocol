@@ -60,9 +60,9 @@ func NewProtocol() Protocol {
 type Stage string
 
 const (
-	StageBuilder         Stage = "builder"
-	StageSetData         Stage = "set_data"
-	StageResponseBuilder Stage = "recive_data"
+	Stage_befor_send_data Stage = "stage_beforSend_data"
+	Stage_set_data        Stage = "set_data"
+	Stage_recive_data     Stage = "recive_data"
 
 	OrderMax = 999999
 	OrderMin = 1
@@ -70,8 +70,8 @@ const (
 
 func (s Stage) Order() int {
 	m := map[Stage]int{
-		StageBuilder: OrderMax,
-		StageSetData: OrderMin,
+		Stage_befor_send_data: OrderMax,
+		Stage_set_data:        OrderMin,
 	}
 	if v, ok := m[s]; ok {
 		return v
