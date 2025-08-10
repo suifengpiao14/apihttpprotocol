@@ -2,8 +2,8 @@
 package apihttpprotocol
 
 import (
-	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
 )
 
@@ -16,32 +16,21 @@ type Message struct {
 	MiddlewareFuncs MiddlewareFuncs
 }
 
-func (m Message) Packet(param any) (string, error) {
-	m.GoStructRef = param
-	m1, err := m.MiddlewareFuncs.Apply(m)
+func (m *Message) Packet() (string, error) {
+	err := m.MiddlewareFuncs.Apply(m)
 	if err != nil {
 		return "", err
 	}
-	if m1.GoStructRef == nil {
-		return "", nil
-	}
-	b, err := json.Marshal(m1.GoStructRef)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	return m.Raw, nil
 }
 
-func (m Message) UnPacket(dst any) error {
+func (m *Message) UnPacket(dst any) error {
 	m.GoStructRef = dst
-	m1, err := m.MiddlewareFuncs.Apply(m)
+	err := m.MiddlewareFuncs.Apply(m)
 	if err != nil {
 		return err
 	}
-	if m1.Raw == "" {
-		return nil
-	}
-	return json.Unmarshal([]byte(m1.Raw), dst)
+	return nil
 }
 
 // 协议封装
@@ -51,8 +40,26 @@ type Protocol struct {
 	Response Message
 }
 
-func NewProtocol() Protocol {
-	return Protocol{}
+func (p *Protocol) GetRequestStructRef() any {
+	if p.Request.GoStructRef == nil {
+		return nil
+	}
+	rt := reflect.TypeOf(p.Request.GoStructRef)
+	if rt.Kind() == reflect.Ptr {
+		return p.Request.GoStructRef
+	}
+	return &p.Request.GoStructRef
+}
+func (p *Protocol) GetResponseStruct() any {
+	return p.Response.GoStructRef
+}
+func (p *Protocol) WithRequestRaw(raw string) *Protocol {
+	p.Request.Raw = raw
+	return p
+}
+
+func NewProtocol() *Protocol {
+	return &Protocol{}
 }
 
 // 中间件结构
@@ -82,7 +89,7 @@ func (s Stage) Order() int {
 type MiddlewareFunc struct {
 	Order int
 	Stage Stage
-	Fn    func(message Message) (Message, error)
+	Fn    func(message *Message) error
 }
 
 type MiddlewareFuncs []MiddlewareFunc
@@ -96,32 +103,31 @@ func (ms MiddlewareFuncs) Sort() {
 	})
 }
 
-func (m MiddlewareFunc) Apply(p Message) (Message, error) {
+func (m MiddlewareFunc) Apply(p *Message) error {
 	if m.Fn == nil {
-		return p, nil
+		return nil
 	}
 	return m.Fn(p)
 }
 
-func (ms MiddlewareFuncs) Apply(p Message) (Message, error) {
+func (ms MiddlewareFuncs) Apply(p *Message) error {
 	for _, m := range ms {
-		var err error
-		p, err = m.Fn(p)
+		err := m.Fn(p)
 		if err != nil {
-			return p, err
+			return err
 		}
 	}
-	return p, nil
+	return nil
 }
 
 // 中间件设置简化方法
 
-func (r Protocol) WithRequestMiddleware(fns ...MiddlewareFunc) Protocol {
+func (r *Protocol) WithRequestMiddleware(fns ...MiddlewareFunc) *Protocol {
 	r.Request.MiddlewareFuncs = append(r.Request.MiddlewareFuncs, fns...)
 	return r
 }
 
-func (r Protocol) WithResponseMiddleware(fns ...MiddlewareFunc) Protocol {
+func (r *Protocol) WithResponseMiddleware(fns ...MiddlewareFunc) *Protocol {
 	r.Response.MiddlewareFuncs = append(r.Response.MiddlewareFuncs, fns...)
 	return r
 }

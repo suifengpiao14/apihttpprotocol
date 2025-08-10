@@ -176,7 +176,7 @@ func (p *Protocol2[T]) WithApiPath(apiPath string) *T {
 
 func (p Protocol2Client) PacketRequest(param any) (s string, err error) {
 	p.RequestParam.Param = param
-	s, err = p.Protocol.Request.Packet(p.RequestParam)
+	s, err = p.Protocol.Request.Packet()
 	if err != nil {
 		return "", err
 	}
@@ -207,7 +207,7 @@ func (p Protocol2Server) UnPacketRequest(param any) (err error) {
 
 func (p Protocol2Server) PacketResponse(param any) (s string, err error) {
 	p.ResponseParam.Data.Data = param
-	s, err = p.Protocol.Response.Packet(p.RequestParam)
+	s, err = p.Protocol.Response.Packet()
 	if err != nil {
 		return "", err
 	}
@@ -219,41 +219,41 @@ const (
 	Http_header_HSB_OPENAPI_SIGNATURE       = "HSB-OPENAPI-SIGNATURE"
 )
 
-func (p Protocol2Client) UseSignature() Protocol2Client {
-	p.Protocol = p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
+func (p *Protocol2Client) UseSignature() *Protocol2Client {
+	p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
 		Stage: apihttpprotocol.Stage_befor_send_data,
-		Fn: func(message apihttpprotocol.Message) (apihttpprotocol.Message, error) {
+		Fn: func(message *apihttpprotocol.Message) error {
 			sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
 			p.Protocol.Request.Header.Add(Http_header_HSB_OPENAPI_SIGNATURE, sign)
-			return message, nil
+			return nil
 		},
 	})
 	return p
 }
 
-func (p Protocol2Server) UseCheckSignature() Protocol2Server {
-	p.Protocol = p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
+func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
+	p.Protocol.WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: apihttpprotocol.OrderMax,
 		Stage: apihttpprotocol.Stage_recive_data,
-		Fn: func(param apihttpprotocol.Message) (param1 apihttpprotocol.Message, err error) {
+		Fn: func(param *apihttpprotocol.Message) (err error) {
 			callerId := param.Header.Get(Http_header_HSB_OPENAPI_CALLERSERVICEID)
 			if callerId == "" {
 				err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
-				return param, err
+				return err
 			}
 
 			inputSign := param.Header.Get(Http_header_HSB_OPENAPI_SIGNATURE)
 			if inputSign == "" {
 				err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
-				return param, err
+				return err
 			}
 			sign := apiSign(param.Raw, p.callerService.CallerServiceKey)
 			if sign != inputSign {
 				err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
-				return param, err
+				return err
 			}
-			return param, nil
+			return nil
 		},
 	})
 	return p
@@ -283,11 +283,11 @@ func NewSerivceProtocol(callerServiceId string, callerServiceKey string) Protoco
 	protocol := apihttpprotocol.NewProtocol().WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
 		Stage: apihttpprotocol.Stage_set_data,
-		Fn: func(message apihttpprotocol.Message) (apihttpprotocol.Message, error) {
+		Fn: func(message *apihttpprotocol.Message) error {
 			request.Head.Timestamps = cast.ToString(time.Now().Unix()) //这个参数在实际请求时生成
 			request.Head.InvokeId = uuid.New().String()                //这个参数在实际请求时生成
 			message.GoStructRef = request
-			return message, nil
+			return nil
 		},
 	})
 	s := Protocol2Server{
@@ -296,7 +296,7 @@ func NewSerivceProtocol(callerServiceId string, callerServiceKey string) Protoco
 				CallerServiceId:  callerServiceId,
 				CallerServiceKey: callerServiceKey,
 			},
-			Protocol:      protocol,
+			Protocol:      *protocol,
 			RequestParam:  request,
 			ResponseParam: response,
 		},
