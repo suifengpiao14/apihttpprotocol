@@ -2,6 +2,7 @@
 package apihttpprotocol
 
 import (
+	"encoding/json"
 	"net/http"
 	"slices"
 
@@ -15,11 +16,26 @@ type IOFn func(message *Message) (err error)
 type Message struct {
 	Header      http.Header
 	GoStructRef any
-	Raw         string // 记录原始报文，方便中间件、日志等使用
+	raw         string // 记录原始报文，方便中间件、日志等使用
 
 	MiddlewareFuncs MiddlewareFuncs
 	ReadIOFn        IOFn
 	WriteIOFn       IOFn
+}
+
+func (m *Message) GetRaw() string {
+	if m.raw != "" {
+		return m.raw
+	}
+	if m.GoStructRef == nil {
+		return ""
+	}
+	b, err := json.Marshal(m.GoStructRef)
+	if err != nil {
+		panic(err)
+	}
+	m.raw = string(b)
+	return m.raw
 }
 
 // 协议封装

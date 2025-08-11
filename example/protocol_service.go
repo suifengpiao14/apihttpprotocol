@@ -249,7 +249,7 @@ func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
 				err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
 				return err
 			}
-			sign := apiSign(param.Raw, p.callerService.CallerServiceKey)
+			sign := apiSign(param.GetRaw(), p.callerService.CallerServiceKey)
 			if sign != inputSign {
 				err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
 				return err
