@@ -111,6 +111,10 @@ func (p *Protocol) ReadRequest(readStructRef ReaderStructI) (err error) {
 		return err
 	}
 	p.Request.GoStructRef = readStructRef
+	err = p.Request.MiddlewareFuncs.Apply(&p.Request)
+	if err != nil {
+		return err
+	}
 	err = readIOFn(&p.Request)
 	if err != nil {
 		return err
@@ -122,14 +126,19 @@ func (p *Protocol) ReadRequest(readStructRef ReaderStructI) (err error) {
 	return nil
 }
 
-func (p *Protocol) WriteResponse(writeStruct any) {
-	writeIOFn := p.Request.WriteIOFn
+func (p *Protocol) WriteResponse(writeStruct any) (err error) {
+	writeIOFn := p.Response.WriteIOFn
 	if writeIOFn == nil {
-		err := errors.WithMessagef(ERRIOFnIsNil, "write response struct %v", p.Request.GoStructRef)
-		panic(err)
+		err := errors.WithMessagef(ERRIOFnIsNil, "write response struct %v", p.Response.GoStructRef)
+		return err
 	}
-	p.Request.GoStructRef = writeStruct
-	writeIOFn(&p.Request) // 写入响应数据，但不返回错误信息
+	p.Response.GoStructRef = writeStruct
+	err = p.Response.MiddlewareFuncs.Apply(&p.Response)
+	if err != nil {
+		return err
+	}
+	writeIOFn(&p.Response) // 写入响应数据，但不返回错误信息
+	return nil
 
 }
 
@@ -150,6 +159,10 @@ func (p *Protocol) WriteRequest(writeStruct any) (err error) {
 		return err
 	}
 	p.Request.GoStructRef = writeStruct
+	err = p.Request.MiddlewareFuncs.Apply(&p.Request)
+	if err != nil {
+		return err
+	}
 	err = writeIOFn(&p.Request)
 	if err != nil {
 		return err
@@ -160,11 +173,15 @@ func (p *Protocol) WriteRequest(writeStruct any) (err error) {
 func (p *Protocol) ReadResponse(readStructRef ReaderStructI) (err error) {
 	readIOFn := p.Response.ReadIOFn
 	if readIOFn == nil {
-		err = errors.WithMessagef(ERRIOFnIsNil, "read response struct %v", p.Request.GoStructRef)
+		err = errors.WithMessagef(ERRIOFnIsNil, "read response struct %v", p.Response.GoStructRef)
 		return err
 	}
 	p.Response.GoStructRef = readStructRef
-	err = readIOFn(&p.Request)
+	err = p.Response.MiddlewareFuncs.Apply(&p.Response)
+	if err != nil {
+		return err
+	}
+	err = readIOFn(&p.Response)
 	if err != nil {
 		return err
 	}
