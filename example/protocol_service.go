@@ -4,9 +4,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
@@ -68,6 +70,8 @@ type Request struct {
 	Head  Head `json:"_head"`
 	Param any  `json:"_param"`
 }
+
+func (r Request) Error() error { return nil }
 
 func (r Request) String() string {
 	b, _ := json.Marshal(r)
@@ -174,18 +178,18 @@ func (p *Protocol2[T]) WithApiPath(apiPath string) *T {
 
 }
 
-func (p Protocol2Client) PacketRequest(param any) (s string, err error) {
+func (p Protocol2Client) WriteRequest(param any) (err error) {
 	p.RequestParam.Param = param
-	s, err = p.Protocol.Request.Packet()
+	err = p.Protocol.WriteRequest(p.RequestParam)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return s, nil
+	return nil
 }
 
-func (p Protocol2Client) UnPacketResponse(dst ResponseI) (err error) {
+func (p Protocol2Client) ReadResponse(dst ResponseI) (err error) {
 	p.ResponseParam.Data.Data = dst
-	err = p.Protocol.Response.UnPacket(p.ResponseParam)
+	err = p.Protocol.ReadResponse(p.ResponseParam)
 	if err != nil {
 		return err
 	}
@@ -196,22 +200,19 @@ func (p Protocol2Client) UnPacketResponse(dst ResponseI) (err error) {
 	return nil
 }
 
-func (p Protocol2Server) UnPacketRequest(param any) (err error) {
+func (p Protocol2Server) ReadRequest(param apihttpprotocol.ReaderStructI) (err error) {
 	p.RequestParam.Param = param
-	err = p.Protocol.Request.UnPacket(p.RequestParam)
+	err = p.Protocol.ReadRequest(p.RequestParam)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p Protocol2Server) PacketResponse(param any) (s string, err error) {
+func (p Protocol2Server) PacketResponse(param any) {
 	p.ResponseParam.Data.Data = param
-	s, err = p.Protocol.Response.Packet()
-	if err != nil {
-		return "", err
-	}
-	return s, nil
+	p.Protocol.WriteResponse(p.ResponseParam)
+
 }
 
 const (
@@ -266,7 +267,7 @@ func apiSign(req string, key string) string {
 	return md5Str
 }
 
-func NewSerivceProtocol(callerServiceId string, callerServiceKey string) Protocol2Server {
+func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey string) Protocol2Server {
 	request := Request{
 		Head: Head{
 			Version: SerivceProtocol_version,
@@ -280,7 +281,7 @@ func NewSerivceProtocol(callerServiceId string, callerServiceKey string) Protoco
 		},
 	}
 	response := Response{}
-	protocol := apihttpprotocol.NewProtocol().WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
+	protocol := NewGinSerivceProtocol(c).WithRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
 		Stage: apihttpprotocol.Stage_set_data,
 		Fn: func(message *apihttpprotocol.Message) error {
@@ -327,4 +328,17 @@ func (e HttpError) Error() string {
 
 type ResponseI interface {
 	Error() error
+}
+
+func NewGinSerivceProtocol(c *gin.Context) *apihttpprotocol.Protocol {
+	readFn := func(message *apihttpprotocol.Message) (err error) {
+		err = c.BindJSON(message.GoStructRef)
+		return err
+	}
+	writeFn := func(message *apihttpprotocol.Message) (err error) {
+		c.JSON(http.StatusOK, message.GoStructRef)
+		return nil
+	}
+	protocol := apihttpprotocol.NewServerProtocol(readFn, writeFn)
+	return protocol
 }
