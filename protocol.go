@@ -11,12 +11,42 @@ import (
 
 type IOFn func(message *Message) (err error)
 
+const (
+	MetaData_Code = "code"
+)
+
+var (
+	MetaData_Code_Success = 0
+	MetaData_Code_Fail    = 1
+)
+
+type Metadata map[string]any
+
+func (m *Metadata) Get(key string, defau any) any {
+	if m == nil || *m == nil {
+		return defau
+	}
+	v, ok := (*m)[key]
+	if !ok {
+		return defau
+	}
+	return v
+}
+
+func (m *Metadata) Set(key string, value any) {
+	if m == nil {
+		return
+	}
+	(*m)[key] = value
+}
+
 // 通用请求/响应结构体
 
 type Message struct {
 	Header      http.Header
 	GoStructRef any
 	raw         string // 记录原始报文，方便中间件、日志等使用
+	Metadata    *Metadata
 
 	MiddlewareFuncs MiddlewareFuncs
 	ReadIOFn        IOFn
@@ -41,6 +71,20 @@ func (m *Message) SetRaw(raw string) {
 	m.raw = raw
 }
 
+func (m *Message) SetMetaData(key string, value any) {
+	if m.Metadata == nil {
+		m.Metadata = &Metadata{}
+	}
+	m.Metadata.Set(key, value)
+}
+
+func (m *Message) GetMetaData(key string, defau any) any {
+	if m.Metadata == nil {
+		return defau
+	}
+	return m.Metadata.Get(key, defau)
+}
+
 // 协议封装
 
 type Protocol struct {
@@ -49,26 +93,12 @@ type Protocol struct {
 }
 
 func NewServerProtocol(readFn IOFn, writeFn IOFn) *Protocol {
-	protocol := &Protocol{
-		Request: Message{
-			ReadIOFn: readFn,
-		},
-		Response: Message{
-			WriteIOFn: writeFn,
-		},
-	}
+	protocol := (&Protocol{}).WithServerIoFn(readFn, writeFn)
 	return protocol
 }
 
 func NewClitentProtocol(readFn IOFn, writeFn IOFn) *Protocol {
-	protocol := &Protocol{
-		Request: Message{
-			WriteIOFn: writeFn,
-		},
-		Response: Message{
-			ReadIOFn: readFn,
-		},
-	}
+	protocol := (&Protocol{}).WithClientIoFn(readFn, writeFn)
 	return protocol
 }
 
@@ -87,7 +117,18 @@ func NewClitentProtocol(readFn IOFn, writeFn IOFn) *Protocol {
 // 	return protocol
 // }
 
-func (p *Protocol) WithRequestRederIoFn(ioFn IOFn) *Protocol {
+func (p *Protocol) WithServerIoFn(readIOFn IOFn, writeIOFn IOFn) *Protocol {
+	p.Request.ReadIOFn = readIOFn
+	p.Response.WriteIOFn = writeIOFn
+	return p
+}
+func (p *Protocol) WithClientIoFn(readIOFn IOFn, writeIOFn IOFn) *Protocol {
+	p.Response.ReadIOFn = readIOFn
+	p.Request.WriteIOFn = writeIOFn
+	return p
+}
+
+func (p *Protocol) WithRequestReadIoFn(ioFn IOFn) *Protocol {
 	p.Request.ReadIOFn = ioFn
 	return p
 }
@@ -96,7 +137,7 @@ func (p *Protocol) WithRequestWriteIoFn(ioFn IOFn) *Protocol {
 	return p
 }
 
-func (p *Protocol) WithResponseRederIoFn(ioFn IOFn) *Protocol {
+func (p *Protocol) WithResponseReadIoFn(ioFn IOFn) *Protocol {
 	p.Response.ReadIOFn = ioFn
 	return p
 }
@@ -105,8 +146,23 @@ func (p *Protocol) WithResponseWriteIoFn(ioFn IOFn) *Protocol {
 	return p
 }
 
+func (p *Protocol) SetBusineesCode(code int) *Protocol {
+	if p.Response.Metadata == nil {
+		p.Response.Metadata = &Metadata{}
+	}
+	p.Response.SetMetaData(MetaData_Code, code)
+	return p
+}
+
 var ERRIOFnIsNil = errors.New("io function is nil")
 
+func (p *Protocol) ReadRequestWithEmptyValidate(readStructRef any) (err error) {
+	readStructr := ValidateEmpty{
+		ReaderStruct: readStructRef,
+	}
+	err = p.ReadRequest(&readStructr)
+	return err
+}
 func (p *Protocol) ReadRequest(readStructRef ValidateI) (err error) {
 	readIOFn := p.Request.ReadIOFn
 	if readIOFn == nil {
@@ -142,7 +198,21 @@ func (p *Protocol) WriteResponse(writeStruct any) (err error) {
 	}
 	writeIOFn(&p.Response) // 写入响应数据，但不返回错误信息
 	return nil
+}
 
+func (p *Protocol) ResponseSuccess(data any) {
+	err := p.WriteResponse(data)
+	if err != nil {
+		p.ResponseFail(err)
+	}
+}
+func (p *Protocol) ResponseFail(data any) {
+	p.Response.SetMetaData(MetaData_Code, MetaData_Code_Fail)
+
+	err := p.WriteResponse(data)
+	if err != nil {
+		panic(err) // 业务本身报错，在写入时还报错，直接panic ，避免循环调用
+	}
 }
 
 // ValidateI 定义了 Error 方法，用于在读取结构体后获取可能的错误信息。(比如返回体errCode 校验,request 的参数校验等)
@@ -201,17 +271,20 @@ type Stage string
 
 const (
 	Stage_befor_send_data Stage = "stage_beforSend_data"
-	Stage_set_data        Stage = "set_data"
-	Stage_recive_data     Stage = "recive_data"
+	Stage_write_data      Stage = "stage_write_data"
+	Stage_read_data       Stage = "stage_read_data"
 
 	OrderMax = 999999
 	OrderMin = 1
 )
 
+// 默认中间件执行顺序，order 越小，越先执行
+
 func (s Stage) Order() int {
 	m := map[Stage]int{
 		Stage_befor_send_data: OrderMax,
-		Stage_set_data:        OrderMin,
+		Stage_write_data:      OrderMin,
+		Stage_read_data:       OrderMin,
 	}
 	if v, ok := m[s]; ok {
 		return v
@@ -223,6 +296,28 @@ type MiddlewareFunc struct {
 	Order int
 	Stage Stage
 	Fn    func(message *Message) error
+}
+
+func MakeMiddlewareFunc(order int, stage Stage, fn func(message *Message) error) MiddlewareFunc {
+	return MiddlewareFunc{
+		Order: order,
+		Stage: stage,
+		Fn:    fn,
+	}
+}
+func MakeMiddlewareFuncWriteData(fn func(message *Message) error) MiddlewareFunc {
+	return MiddlewareFunc{
+		Order: OrderMin,
+		Stage: Stage_write_data,
+		Fn:    fn,
+	}
+}
+func MakeMiddlewareFuncReadData(fn func(message *Message) error) MiddlewareFunc {
+	return MiddlewareFunc{
+		Order: OrderMin,
+		Stage: Stage_write_data,
+		Fn:    fn,
+	}
 }
 
 type MiddlewareFuncs []MiddlewareFunc
@@ -244,6 +339,7 @@ func (m MiddlewareFunc) Apply(p *Message) error {
 }
 
 func (ms MiddlewareFuncs) Apply(p *Message) error {
+	ms.Sort()
 	for _, m := range ms {
 		err := m.Fn(p)
 		if err != nil {
@@ -252,15 +348,23 @@ func (ms MiddlewareFuncs) Apply(p *Message) error {
 	}
 	return nil
 }
+func (ms *MiddlewareFuncs) Add(fns ...MiddlewareFunc) *MiddlewareFuncs {
+	if *ms == nil {
+		*ms = MiddlewareFuncs{}
+	}
+	*ms = append(*ms, fns...)
+	return ms
+}
 
 // 中间件设置简化方法
 
-func (r *Protocol) WithRequestMiddleware(fns ...MiddlewareFunc) *Protocol {
-	r.Request.MiddlewareFuncs = append(r.Request.MiddlewareFuncs, fns...)
+func (r *Protocol) AddRequestMiddleware(fns ...MiddlewareFunc) *Protocol {
+	r.Request.MiddlewareFuncs.Add(fns...)
 	return r
 }
 
-func (r *Protocol) WithResponseMiddleware(fns ...MiddlewareFunc) *Protocol {
-	r.Response.MiddlewareFuncs = append(r.Response.MiddlewareFuncs, fns...)
+func (r *Protocol) AddResponseMiddleware(fns ...MiddlewareFunc) *Protocol {
+	r.Response.MiddlewareFuncs.Add(fns...)
+
 	return r
 }
