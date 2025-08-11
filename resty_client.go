@@ -2,6 +2,7 @@ package apihttpprotocol
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"resty.dev/v3"
 )
@@ -30,6 +31,10 @@ func NewRestyClientProtocol(method string, url string) *Protocol {
 			Data: message.GoStructRef,
 		}
 		message.GoStructRef = response
+		return nil
+	})).AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
+		curl := req.CurlCmd()
+		fmt.Println(curl) // 打印curl命令
 		return nil
 	}))
 	return protocol
