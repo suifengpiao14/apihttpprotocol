@@ -9,14 +9,14 @@ import (
 func NewRestyClientProtocol(method string, url string) *Protocol {
 	client := resty.New().EnableGenerateCurlCmd()
 	defer client.Close()
-	client.SetHeader("Content-Type", "application/json")
 	req := client.R()
-	response, err := req.Execute(method, url)
-	if err != nil {
-		panic(err)
-	}
 
 	readFn := func(message *Message) (err error) {
+		req.SetHeader("Content-Type", "application/json")
+		response, err := req.Execute(method, url)
+		if err != nil {
+			panic(err)
+		}
 		b := response.Bytes()
 		err = json.Unmarshal(b, message.GoStructRef)
 		return err
