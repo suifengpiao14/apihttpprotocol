@@ -104,7 +104,7 @@ func (p *Protocol) WithResponseWriteIoFn(ioFn IOFn) *Protocol {
 
 var ERRIOFnIsNil = errors.New("io function is nil")
 
-func (p *Protocol) ReadRequest(readStructRef ReaderStructI) (err error) {
+func (p *Protocol) ReadRequest(readStructRef ValidateI) (err error) {
 	readIOFn := p.Request.ReadIOFn
 	if readIOFn == nil {
 		err = errors.WithMessagef(ERRIOFnIsNil, "read request struct %v", p.Request.GoStructRef)
@@ -119,7 +119,7 @@ func (p *Protocol) ReadRequest(readStructRef ReaderStructI) (err error) {
 	if err != nil {
 		return err
 	}
-	err = readStructRef.Error()
+	err = readStructRef.Validate()
 	if err != nil {
 		return err
 	}
@@ -142,15 +142,15 @@ func (p *Protocol) WriteResponse(writeStruct any) (err error) {
 
 }
 
-// ReaderStructI 定义了 Error 方法，用于在读取结构体后获取可能的错误信息。(比如返回体errCode 校验,request 的参数校验等)
-type ReaderStructI interface {
-	Error() error
+// ValidateI 定义了 Error 方法，用于在读取结构体后获取可能的错误信息。(比如返回体errCode 校验,request 的参数校验等)
+type ValidateI interface {
+	Validate() error
 }
-type ReaderStructAny struct {
+type ValidateEmpty struct {
 	ReaderStruct any
 }
 
-func (r *ReaderStructAny) Error() error { return nil }
+func (r *ValidateEmpty) Validate() error { return nil }
 
 func (p *Protocol) WriteRequest(writeStruct any) (err error) {
 	writeIOFn := p.Request.WriteIOFn
@@ -170,7 +170,7 @@ func (p *Protocol) WriteRequest(writeStruct any) (err error) {
 	return nil
 }
 
-func (p *Protocol) ReadResponse(readStructRef ReaderStructI) (err error) {
+func (p *Protocol) ReadResponse(readStructRef ValidateI) (err error) {
 	readIOFn := p.Response.ReadIOFn
 	if readIOFn == nil {
 		err = errors.WithMessagef(ERRIOFnIsNil, "read response struct %v", p.Response.GoStructRef)
@@ -185,7 +185,7 @@ func (p *Protocol) ReadResponse(readStructRef ReaderStructI) (err error) {
 	if err != nil {
 		return err
 	}
-	err = readStructRef.Error()
+	err = readStructRef.Validate()
 	if err != nil {
 		return err
 	}

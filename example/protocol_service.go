@@ -71,7 +71,7 @@ type Request struct {
 	Param any  `json:"_param"`
 }
 
-func (r Request) Error() error { return nil }
+func (r Request) Validate() error { return nil }
 
 func (r Request) String() string {
 	b, _ := json.Marshal(r)
@@ -97,7 +97,7 @@ func (e BusinessError) Error() error {
 
 }
 
-func (r Response) Error() error {
+func (r Response) Validate() error {
 	if r.Data.ErrCode != "0" {
 		return fmt.Errorf("error:%s", r.Data.ErrStr)
 	}
@@ -200,7 +200,7 @@ func (p Protocol2Client) ReadResponse(dst ResponseI) (err error) {
 	return nil
 }
 
-func (p Protocol2Server) ReadRequest(param apihttpprotocol.ReaderStructI) (err error) {
+func (p Protocol2Server) ReadRequest(param apihttpprotocol.ValidateI) (err error) {
 	p.RequestParam.Param = param
 	err = p.Protocol.ReadRequest(p.RequestParam)
 	if err != nil {
