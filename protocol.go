@@ -37,6 +37,9 @@ func (m *Message) GetRaw() string {
 	m.raw = string(b)
 	return m.raw
 }
+func (m *Message) SetRaw(raw string) {
+	m.raw = raw
+}
 
 // 协议封装
 
