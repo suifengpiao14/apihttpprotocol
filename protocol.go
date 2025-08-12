@@ -181,21 +181,6 @@ func (c *ClientProtocol) SetContentTypeJson() *ClientProtocol {
 	return c
 }
 
-//NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
-
-// func NewGinSerivceProtocol(c *gin.Context) *Protocol {
-// 	readFn := func(message *Message) (err error) {
-// 		err = c.BindJSON(message.GoStructRef)
-// 		return err
-// 	}
-// 	writeFn := func(message *Message) (err error) {
-// 		c.JSON(http.StatusOK, message.GoStructRef)
-// 		return nil
-// 	}
-// 	protocol := NewServerProtocol(readFn, writeFn)
-// 	return protocol
-// }
-
 func (p *Protocol) WithServerIoFn(readIOFn IOFn, writeIOFn IOFn) *Protocol {
 	p.Request.SetIOReader(readIOFn)
 	p.Response.SetIOWriter(writeIOFn)

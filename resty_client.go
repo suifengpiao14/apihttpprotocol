@@ -38,7 +38,7 @@ var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
 
 })
 
-func NewRestyClientProtocol(method string, url string) *Protocol {
+func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()
 	readFn := func(message *Message) (err error) {
 		response, err := req.Execute(method, url)
@@ -57,10 +57,11 @@ func NewRestyClientProtocol(method string, url string) *Protocol {
 		req.SetBody(message.GoStructRef)
 		return nil
 	}
-	protocol := NewClitentProtocol(readFn, writeFn).AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
+	clientProtocol := NewClitentProtocol(readFn, writeFn)
+	clientProtocol.Protocol.AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
 		curl := req.CurlCmd()
 		fmt.Println(curl) // 打印curl命令
 		return nil
 	}))
-	return protocol
+	return clientProtocol
 }
