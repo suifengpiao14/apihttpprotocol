@@ -158,7 +158,7 @@ func NewProtocol2[T Protocol2Type](self *T) Protocol2[T] {
 func (p *Protocol2[T]) WithCallerService(callerService CallerService) *T {
 	p.callerService = callerService
 	p.RequestParam.Head.CallerService = callerService.CallerServiceId
-	p.Protocol.Request.Header.Add(Http_header_HSB_OPENAPI_CALLERSERVICEID, p.callerService.CallerServiceId)
+	p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID, p.callerService.CallerServiceId)
 
 	return p.self
 }
@@ -226,7 +226,7 @@ func (p *Protocol2Client) UseSignature() *Protocol2Client {
 		Stage: apihttpprotocol.Stage_befor_send_data,
 		Fn: func(message *apihttpprotocol.Message) error {
 			sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
-			p.Protocol.Request.Header.Add(Http_header_HSB_OPENAPI_SIGNATURE, sign)
+			p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_SIGNATURE, sign)
 			return nil
 		},
 	})
@@ -238,13 +238,13 @@ func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
 		Order: apihttpprotocol.OrderMax,
 		Stage: apihttpprotocol.Stage_read_data,
 		Fn: func(param *apihttpprotocol.Message) (err error) {
-			callerId := param.Header.Get(Http_header_HSB_OPENAPI_CALLERSERVICEID)
+			callerId := param.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
 			if callerId == "" {
 				err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
 				return err
 			}
 
-			inputSign := param.Header.Get(Http_header_HSB_OPENAPI_SIGNATURE)
+			inputSign := param.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
 			if inputSign == "" {
 				err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
 				return err
@@ -330,7 +330,7 @@ type ResponseI interface {
 	Error() error
 }
 
-func NewGinSerivceProtocol(c *gin.Context) *apihttpprotocol.Protocol {
+func NewGinSerivceProtocol(c *gin.Context) *apihttpprotocol.ServerProtocol {
 	readFn := func(message *apihttpprotocol.Message) (err error) {
 		err = c.BindJSON(message.GoStructRef)
 		return err

@@ -2,14 +2,14 @@
 package apihttpprotocol
 
 import (
+	"context"
 	"encoding/json"
-	"net/http"
 	"slices"
 
 	"github.com/pkg/errors"
 )
 
-type IOFn func(message *Message) (err error)
+type IOFn = ApplyFn
 
 const (
 	MetaData_Code = "code"
@@ -43,7 +43,8 @@ func (m *Metadata) Set(key string, value any) {
 // 通用请求/响应结构体
 
 type Message struct {
-	Header      http.Header
+	Context     context.Context
+	Headers     map[string]string
 	GoStructRef any
 	raw         string // 记录原始报文，方便中间件、日志等使用
 	Metadata    *Metadata
@@ -77,6 +78,20 @@ func (m *Message) SetMetaData(key string, value any) {
 	}
 	m.Metadata.Set(key, value)
 }
+func (m *Message) SetHeader(key string, value string) {
+	if m.Headers == nil {
+		m.Headers = map[string]string{}
+	}
+	m.Headers[key] = value
+}
+
+func (m *Message) GetHeader(key string) (value string) {
+	if m.Headers == nil {
+		m.Headers = map[string]string{}
+	}
+	value = m.Headers[key]
+	return value
+}
 
 func (m *Message) GetMetaData(key string, defau any) any {
 	if m.Metadata == nil {
@@ -91,15 +106,40 @@ type Protocol struct {
 	Request  Message
 	Response Message
 }
+type ServerProtocol struct {
+	Protocol
+}
 
-func NewServerProtocol(readFn IOFn, writeFn IOFn) *Protocol {
-	protocol := (&Protocol{}).WithServerIoFn(readFn, writeFn)
+func NewServerProtocol(readFn IOFn, writeFn IOFn) *ServerProtocol {
+	p := &Protocol{}
+	p = p.WithServerIoFn(readFn, writeFn)
+	protocol := &ServerProtocol{
+		Protocol: *p,
+	}
 	return protocol
 }
 
-func NewClitentProtocol(readFn IOFn, writeFn IOFn) *Protocol {
-	protocol := (&Protocol{}).WithClientIoFn(readFn, writeFn)
+type ClientProtocol struct {
+	Protocol
+}
+
+func NewClitentProtocol(readFn IOFn, writeFn IOFn) *ClientProtocol {
+	p := &Protocol{}
+	p = p.WithClientIoFn(readFn, writeFn)
+	protocol := &ClientProtocol{
+		Protocol: *p,
+	}
 	return protocol
+}
+
+func (c *ClientProtocol) SetContentType(contentType string) *ClientProtocol {
+	c.Request.SetHeader("Content-Type", contentType)
+	return c
+}
+func (c *ClientProtocol) SetContentTypeJson() *ClientProtocol {
+	contentType := "application/json"
+	c.SetContentType(contentType)
+	return c
 }
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
@@ -292,27 +332,28 @@ func (s Stage) Order() int {
 	return 0
 }
 
+type ApplyFn func(message *Message) error
 type MiddlewareFunc struct {
 	Order int
 	Stage Stage
-	Fn    func(message *Message) error
+	Fn    ApplyFn
 }
 
-func MakeMiddlewareFunc(order int, stage Stage, fn func(message *Message) error) MiddlewareFunc {
+func MakeMiddlewareFunc(order int, stage Stage, fn ApplyFn) MiddlewareFunc {
 	return MiddlewareFunc{
 		Order: order,
 		Stage: stage,
 		Fn:    fn,
 	}
 }
-func MakeMiddlewareFuncWriteData(fn func(message *Message) error) MiddlewareFunc {
+func MakeMiddlewareFuncWriteData(fn ApplyFn) MiddlewareFunc {
 	return MiddlewareFunc{
 		Order: OrderMin,
 		Stage: Stage_write_data,
 		Fn:    fn,
 	}
 }
-func MakeMiddlewareFuncReadData(fn func(message *Message) error) MiddlewareFunc {
+func MakeMiddlewareFuncReadData(fn ApplyFn) MiddlewareFunc {
 	return MiddlewareFunc{
 		Order: OrderMin,
 		Stage: Stage_write_data,
