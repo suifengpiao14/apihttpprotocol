@@ -50,8 +50,6 @@ type Message struct {
 	Metadata    *Metadata
 
 	MiddlewareFuncs MiddlewareFuncs
-	ReadIOFn        IOFn
-	WriteIOFn       IOFn
 }
 
 func (m *Message) GetRaw() string {
@@ -98,6 +96,40 @@ func (m *Message) GetMetaData(key string, defau any) any {
 		return defau
 	}
 	return m.Metadata.Get(key, defau)
+}
+
+func (m *Message) AddMiddleware(middlewares ...MiddlewareFunc) *Message {
+	m.MiddlewareFuncs.Add(middlewares...)
+	return m
+}
+
+// SetIOReader 设置读函数，优先级最高，第一个执行函数,从网络中读取数据，从这个函数开始执行协议中间件链
+func (m *Message) SetIOReader(readFn ApplyFn) *Message {
+	m.MiddlewareFuncs.Add(MakeMiddlewareFunc(OrderMin, Stage_io_read_data, readFn))
+	return m
+}
+
+// SetIOWriter 设置写函数，优先级最低，最后一个执行函数,这个函数执行完后，数据流脱离protocol进入网络，其它协议中间件没有执行机会
+func (m *Message) SetIOWriter(readFn ApplyFn) *Message {
+	m.MiddlewareFuncs.Add(MakeMiddlewareFunc(OrderMax, Stage_io_write_data, readFn))
+	return m
+}
+
+func (m *Message) HasIOReder() (err error) {
+	_, err = m.MiddlewareFuncs.GetBySateMust(Stage_io_read_data)
+	if err != nil {
+		err = errors.WithMessage(err, "IOReder required")
+		return err
+	}
+	return nil
+}
+func (m *Message) HasIOWriter() (err error) {
+	_, err = m.MiddlewareFuncs.GetBySateMust(Stage_io_write_data)
+	if err != nil {
+		err = errors.WithMessage(err, "IOWriter required")
+		return err
+	}
+	return nil
 }
 
 // 协议封装
@@ -165,31 +197,31 @@ func (c *ClientProtocol) SetContentTypeJson() *ClientProtocol {
 // }
 
 func (p *Protocol) WithServerIoFn(readIOFn IOFn, writeIOFn IOFn) *Protocol {
-	p.Request.ReadIOFn = readIOFn
-	p.Response.WriteIOFn = writeIOFn
+	p.Request.SetIOReader(readIOFn)
+	p.Response.SetIOWriter(writeIOFn)
 	return p
 }
 func (p *Protocol) WithClientIoFn(readIOFn IOFn, writeIOFn IOFn) *Protocol {
-	p.Response.ReadIOFn = readIOFn
-	p.Request.WriteIOFn = writeIOFn
+	p.Response.SetIOReader(readIOFn)
+	p.Request.SetIOWriter(writeIOFn)
 	return p
 }
 
 func (p *Protocol) WithRequestReadIoFn(ioFn IOFn) *Protocol {
-	p.Request.ReadIOFn = ioFn
+	p.Request.SetIOReader(ioFn)
 	return p
 }
 func (p *Protocol) WithRequestWriteIoFn(ioFn IOFn) *Protocol {
-	p.Request.WriteIOFn = ioFn
+	p.Request.SetIOWriter(ioFn)
 	return p
 }
 
 func (p *Protocol) WithResponseReadIoFn(ioFn IOFn) *Protocol {
-	p.Response.ReadIOFn = ioFn
+	p.Response.SetIOReader(ioFn)
 	return p
 }
 func (p *Protocol) WithResponseWriteIoFn(ioFn IOFn) *Protocol {
-	p.Response.WriteIOFn = ioFn
+	p.Response.SetIOWriter(ioFn)
 	return p
 }
 
@@ -211,17 +243,12 @@ func (p *Protocol) ReadRequestWithEmptyValidate(readStructRef any) (err error) {
 	return err
 }
 func (p *Protocol) ReadRequest(readStructRef ValidateI) (err error) {
-	readIOFn := p.Request.ReadIOFn
-	if readIOFn == nil {
-		err = errors.WithMessagef(ERRIOFnIsNil, "read request struct %v", p.Request.GoStructRef)
+	if err := p.Request.HasIOReder(); err != nil {
+		err = errors.WithMessagef(err, "read request struct %v", p.Request.GoStructRef)
 		return err
 	}
 	p.Request.GoStructRef = readStructRef
 	err = p.Request.MiddlewareFuncs.Apply(&p.Request)
-	if err != nil {
-		return err
-	}
-	err = readIOFn(&p.Request)
 	if err != nil {
 		return err
 	}
@@ -233,9 +260,8 @@ func (p *Protocol) ReadRequest(readStructRef ValidateI) (err error) {
 }
 
 func (p *Protocol) WriteResponse(writeStruct any) (err error) {
-	writeIOFn := p.Response.WriteIOFn
-	if writeIOFn == nil {
-		err := errors.WithMessagef(ERRIOFnIsNil, "write response struct %v", p.Response.GoStructRef)
+	if err := p.Request.HasIOWriter(); err != nil {
+		err = errors.WithMessagef(err, "write response struct %v", p.Request.GoStructRef)
 		return err
 	}
 	p.Response.GoStructRef = writeStruct
@@ -243,7 +269,6 @@ func (p *Protocol) WriteResponse(writeStruct any) (err error) {
 	if err != nil {
 		return err
 	}
-	writeIOFn(&p.Response) // 写入响应数据，但不返回错误信息
 	return nil
 }
 
@@ -273,9 +298,8 @@ type ValidateEmpty struct {
 func (r *ValidateEmpty) Validate() error { return nil }
 
 func (p *Protocol) WriteRequest(writeStruct any) (err error) {
-	writeIOFn := p.Request.WriteIOFn
-	if writeIOFn == nil {
-		err = errors.WithMessagef(ERRIOFnIsNil, "write request struct %v", p.Request.GoStructRef)
+	if err := p.Request.HasIOWriter(); err != nil {
+		err = errors.WithMessagef(err, "write request struct %v", p.Request.GoStructRef)
 		return err
 	}
 	p.Request.GoStructRef = writeStruct
@@ -283,25 +307,16 @@ func (p *Protocol) WriteRequest(writeStruct any) (err error) {
 	if err != nil {
 		return err
 	}
-	err = writeIOFn(&p.Request)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
 func (p *Protocol) ReadResponse(readStructRef ValidateI) (err error) {
-	readIOFn := p.Response.ReadIOFn
-	if readIOFn == nil {
-		err = errors.WithMessagef(ERRIOFnIsNil, "read response struct %v", p.Response.GoStructRef)
+	if err := p.Request.HasIOReder(); err != nil {
+		err = errors.WithMessagef(err, "read response struct %v", p.Request.GoStructRef)
 		return err
 	}
 	p.Response.GoStructRef = readStructRef
 	err = p.Response.MiddlewareFuncs.Apply(&p.Response)
-	if err != nil {
-		return err
-	}
-	err = readIOFn(&p.Response)
 	if err != nil {
 		return err
 	}
@@ -318,8 +333,8 @@ type Stage string
 
 const (
 	Stage_befor_send_data Stage = "stage_beforSend_data"
-	Stage_write_data      Stage = "stage_write_data"
-	Stage_read_data       Stage = "stage_read_data"
+	Stage_io_write_data   Stage = "stage_io_write_data"
+	Stage_io_read_data    Stage = "stage_io_read_data"
 
 	OrderMax = 999999
 	OrderMin = 1
@@ -330,8 +345,8 @@ const (
 func (s Stage) Order() int {
 	m := map[Stage]int{
 		Stage_befor_send_data: OrderMax,
-		Stage_write_data:      OrderMin,
-		Stage_read_data:       OrderMin,
+		Stage_io_write_data:   OrderMin,
+		Stage_io_read_data:    OrderMin,
 	}
 	if v, ok := m[s]; ok {
 		return v
@@ -356,14 +371,14 @@ func MakeMiddlewareFunc(order int, stage Stage, fn ApplyFn) MiddlewareFunc {
 func MakeMiddlewareFuncWriteData(fn ApplyFn) MiddlewareFunc {
 	return MiddlewareFunc{
 		Order: OrderMin,
-		Stage: Stage_write_data,
+		Stage: Stage_io_write_data,
 		Fn:    fn,
 	}
 }
 func MakeMiddlewareFuncReadData(fn ApplyFn) MiddlewareFunc {
 	return MiddlewareFunc{
 		Order: OrderMin,
-		Stage: Stage_write_data,
+		Stage: Stage_io_write_data,
 		Fn:    fn,
 	}
 }
@@ -404,15 +419,28 @@ func (ms *MiddlewareFuncs) Add(fns ...MiddlewareFunc) *MiddlewareFuncs {
 	return ms
 }
 
+var ERRMiddlewareNotFound = errors.New("middleware not found")
+
+func (ms *MiddlewareFuncs) GetBySateMust(stage Stage) (middle MiddlewareFunc, err error) {
+	for _, m := range *ms {
+		if m.Stage == stage {
+			return m, nil
+		}
+	}
+	err = errors.WithMessagef(ERRMiddlewareNotFound, "middleware not found for stage %v", stage)
+	return middle, err
+
+}
+
 // 中间件设置简化方法
 
 func (r *Protocol) AddRequestMiddleware(fns ...MiddlewareFunc) *Protocol {
-	r.Request.MiddlewareFuncs.Add(fns...)
+	r.Request.AddMiddleware(fns...)
 	return r
 }
 
 func (r *Protocol) AddResponseMiddleware(fns ...MiddlewareFunc) *Protocol {
-	r.Response.MiddlewareFuncs.Add(fns...)
+	r.Response.AddMiddleware(fns...)
 
 	return r
 }

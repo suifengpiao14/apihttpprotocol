@@ -236,7 +236,7 @@ func (p *Protocol2Client) UseSignature() *Protocol2Client {
 func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
 	p.Protocol.AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: apihttpprotocol.OrderMax,
-		Stage: apihttpprotocol.Stage_read_data,
+		Stage: apihttpprotocol.Stage_io_read_data,
 		Fn: func(param *apihttpprotocol.Message) (err error) {
 			callerId := param.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
 			if callerId == "" {
@@ -283,7 +283,7 @@ func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey
 	response := Response{}
 	protocol := NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
-		Stage: apihttpprotocol.Stage_write_data,
+		Stage: apihttpprotocol.Stage_io_write_data,
 		Fn: func(message *apihttpprotocol.Message) error {
 			request.Head.Timestamps = cast.ToString(time.Now().Unix()) //这个参数在实际请求时生成
 			request.Head.InvokeId = uuid.New().String()                //这个参数在实际请求时生成
