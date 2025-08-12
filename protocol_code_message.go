@@ -8,7 +8,8 @@ type Response struct {
 	Data    any    `json:"data"`
 }
 
-func CodeMessageSerivceProtocol(p *Protocol) *Protocol {
+//ProtocolMiddlewareCodeMessage 封装返回体code/message 协议
+func ProtocolMiddlewareCodeMessage(p *Protocol) *Protocol {
 	protocol := p.AddResponseMiddleware(MakeMiddlewareFuncWriteData(func(message *Message) error {
 		code := cast.ToInt(message.GetMetaData(MetaData_Code, MetaData_Code_Success))
 		data := message.GoStructRef

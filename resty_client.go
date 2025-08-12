@@ -57,13 +57,7 @@ func NewRestyClientProtocol(method string, url string) *Protocol {
 		req.SetBody(message.GoStructRef)
 		return nil
 	}
-	protocol := NewClitentProtocol(readFn, writeFn).AddResponseMiddleware(MakeMiddlewareFuncWriteData(func(message *Message) error {
-		response := &Response{
-			Data: message.GoStructRef,
-		}
-		message.GoStructRef = response
-		return nil
-	})).AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
+	protocol := NewClitentProtocol(readFn, writeFn).AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
 		curl := req.CurlCmd()
 		fmt.Println(curl) // 打印curl命令
 		return nil

@@ -102,10 +102,17 @@ func (m *Message) GetMetaData(key string, defau any) any {
 
 // 协议封装
 
+type ProtocolMiddleware = func(p *Protocol) *Protocol
 type Protocol struct {
 	Request  Message
 	Response Message
 }
+
+func (p *Protocol) Apply(fn ProtocolMiddleware) *Protocol {
+	p = fn(p)
+	return p
+}
+
 type ServerProtocol struct {
 	Protocol
 }
