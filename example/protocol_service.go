@@ -118,23 +118,20 @@ type CallerService struct {
 
 // Protocol2Client 二层协议 用于发送二层协议请求包、接收二层协议响应包 用于客户端
 type Protocol2Client struct {
-	Protocol2[Protocol2Client]
-}
-
-// Protocol2Server 二层协议 用于接收二层协议请求包、返回二层协议响应包 用于服务端
-type Protocol2Server struct {
-	Protocol2[Protocol2Server]
+	Protocol      apihttpprotocol.ClientProtocol
+	ApiPath       string
+	RequestParam  Request
+	ResponseParam Response
+	callerService CallerService
 }
 
 func NewProtocol2Client() *Protocol2Client {
 	p := &Protocol2Client{}
-	p.Protocol2 = NewProtocol2(p)
 	return p
 }
 
 func NewProtocol2Server() *Protocol2Server {
 	p := &Protocol2Server{}
-	p.Protocol2 = NewProtocol2(p)
 	return p
 }
 
@@ -142,39 +139,38 @@ type Protocol2Type interface {
 	Protocol2Client | Protocol2Server
 }
 
-type Protocol2[T Protocol2Type] struct {
-	self          *T
-	Protocol      apihttpprotocol.Protocol
+type Protocol2Server struct {
+	Protocol      apihttpprotocol.ServerProtocol
 	ApiPath       string
 	RequestParam  Request
 	ResponseParam Response
 	callerService CallerService
 }
 
-func NewProtocol2[T Protocol2Type](self *T) Protocol2[T] {
-	return Protocol2[T]{self: self}
+func NewProtocol2() Protocol2Server {
+	return Protocol2Server{}
 }
 
-func (p *Protocol2[T]) WithCallerService(callerService CallerService) *T {
+func (p *Protocol2Server) WithCallerService(callerService CallerService) *Protocol2Server {
 	p.callerService = callerService
 	p.RequestParam.Head.CallerService = callerService.CallerServiceId
 	p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID, p.callerService.CallerServiceId)
 
-	return p.self
+	return p
 }
 
-func (p *Protocol2[T]) WithInterface(_interface string) *T {
+func (p *Protocol2Server) WithInterface(_interface string) *Protocol2Server {
 	p.RequestParam.Head.Interface = _interface
-	return p.self
+	return p
 }
 
-func (p *Protocol2[T]) WithApiPath(apiPath string) *T {
+func (p *Protocol2Server) WithApiPath(apiPath string) *Protocol2Server {
 	p.ApiPath = apiPath
 	_interface := strings.Trim(strings.ReplaceAll(apiPath, "/", "."), ".")
 	if p.RequestParam.Head.Interface == "" {
 		p.RequestParam.Head.Interface = _interface
 	}
-	return p.self
+	return p
 
 }
 
@@ -292,15 +288,13 @@ func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey
 		},
 	})
 	s := Protocol2Server{
-		Protocol2: Protocol2[Protocol2Server]{
-			callerService: CallerService{
-				CallerServiceId:  callerServiceId,
-				CallerServiceKey: callerServiceKey,
-			},
-			Protocol:      *protocol,
-			RequestParam:  request,
-			ResponseParam: response,
+		callerService: CallerService{
+			CallerServiceId:  callerServiceId,
+			CallerServiceKey: callerServiceKey,
 		},
+		Protocol:      *protocol,
+		RequestParam:  request,
+		ResponseParam: response,
 	}
 	return s
 }
