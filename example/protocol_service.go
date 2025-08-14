@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -277,7 +276,7 @@ func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey
 		},
 	}
 	response := Response{}
-	protocol := NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
+	protocol := apihttpprotocol.NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
 		Stage: apihttpprotocol.Stage_io_write_data,
 		Fn: func(message *apihttpprotocol.Message) error {
@@ -322,17 +321,4 @@ func (e HttpError) Error() string {
 
 type ResponseI interface {
 	Error() error
-}
-
-func NewGinSerivceProtocol(c *gin.Context) *apihttpprotocol.ServerProtocol {
-	readFn := func(message *apihttpprotocol.Message) (err error) {
-		err = c.BindJSON(message.GoStructRef)
-		return err
-	}
-	writeFn := func(message *apihttpprotocol.Message) (err error) {
-		c.JSON(http.StatusOK, message.GoStructRef)
-		return nil
-	}
-	protocol := apihttpprotocol.NewServerProtocol(readFn, writeFn)
-	return protocol
 }
