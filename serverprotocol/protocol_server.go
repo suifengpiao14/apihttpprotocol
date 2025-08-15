@@ -124,7 +124,7 @@ type Response struct {
 }
 
 // ProtocolMiddlewareCodeMessage 封装返回体code/message 协议
-func ServerProtocolMiddlewareCodeMessage(p *ServerProtocol) *ServerProtocol {
+func ApplyCodeMessageMiddle(p *ServerProtocol) *ServerProtocol {
 	protocol := p.AddResponseMiddleware(apihttpprotocol.MakeMiddlewareFuncWriteData(func(message *apihttpprotocol.Message) error {
 		code := cast.ToInt(message.GetMetaData(apihttpprotocol.MetaData_Code, apihttpprotocol.MetaData_Code_Success))
 		data := message.GoStructRef

@@ -204,10 +204,10 @@ type MiddlewareFuncs []MiddlewareFunc
 
 func (ms MiddlewareFuncs) Sort() {
 	slices.SortFunc(ms, func(a, b MiddlewareFunc) int {
-		if d := b.Stage.Order() - a.Stage.Order(); d != 0 {
+		if d := a.Stage.Order() - b.Stage.Order(); d != 0 {
 			return d
 		}
-		return b.Order - a.Order
+		return a.Order - b.Order
 	})
 }
 
