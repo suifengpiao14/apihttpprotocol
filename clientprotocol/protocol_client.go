@@ -1,4 +1,4 @@
-package apihttpprotocol
+package clientprotocol
 
 import (
 	"encoding/json"
@@ -11,15 +11,16 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 	"resty.dev/v3"
 )
 
 type ClientProtocol struct {
-	Request  Message
-	Response Message
+	Request  apihttpprotocol.Message
+	Response apihttpprotocol.Message
 }
 
-func NewClitentProtocol(readFn IOFn, writeFn IOFn) *ClientProtocol {
+func NewClitentProtocol(readFn apihttpprotocol.IOFn, writeFn apihttpprotocol.IOFn) *ClientProtocol {
 	p := &ClientProtocol{}
 	p = p.WithReadIoFn(readFn).WithReadIoFn(writeFn)
 	return p
@@ -37,7 +38,7 @@ func (c *ClientProtocol) WriteRequest(dta any) (err error) {
 	}
 	return nil
 }
-func (c *ClientProtocol) ReadResponse(dst ValidateI) (err error) {
+func (c *ClientProtocol) ReadResponse(dst apihttpprotocol.ValidateI) (err error) {
 	if err := c.Request.HasIOReder(); err != nil {
 		err = errors.WithMessagef(err, "read response struct %v", c.Request.GoStructRef)
 		return err
@@ -54,12 +55,12 @@ func (c *ClientProtocol) ReadResponse(dst ValidateI) (err error) {
 	return nil
 }
 
-func (c *ClientProtocol) AddRequestMiddleware(middlewares ...MiddlewareFunc) *ClientProtocol {
+func (c *ClientProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.MiddlewareFunc) *ClientProtocol {
 	c.Request.AddMiddleware(middlewares...)
 	return c
 }
 
-func (c *ClientProtocol) AddResponseMiddleware(middlewares ...MiddlewareFunc) *ClientProtocol {
+func (c *ClientProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.MiddlewareFunc) *ClientProtocol {
 	c.Response.AddMiddleware(middlewares...)
 	return c
 }
@@ -74,12 +75,12 @@ func (c *ClientProtocol) SetContentTypeJson() *ClientProtocol {
 	return c
 }
 
-func (c *ClientProtocol) WithWriteIoFn(ioFn IOFn) *ClientProtocol {
+func (c *ClientProtocol) WithWriteIoFn(ioFn apihttpprotocol.IOFn) *ClientProtocol {
 	c.Request.SetIOWriter(ioFn)
 	return c
 }
 
-func (c *ClientProtocol) WithReadIoFn(ioFn IOFn) *ClientProtocol {
+func (c *ClientProtocol) WithReadIoFn(ioFn apihttpprotocol.IOFn) *ClientProtocol {
 	c.Response.SetIOReader(ioFn)
 	return c
 }
@@ -111,7 +112,7 @@ var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
 
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()
-	readFn := func(message *Message) (err error) {
+	readFn := func(message *apihttpprotocol.Message) (err error) {
 		response, err := req.Execute(method, url)
 		if err != nil {
 			return err
@@ -123,13 +124,13 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		}
 		return nil
 	}
-	writeFn := func(message *Message) (err error) {
+	writeFn := func(message *apihttpprotocol.Message) (err error) {
 		req.SetHeaders(message.Headers)
 		req.SetBody(message.GoStructRef)
 		return nil
 	}
 	clientProtocol := NewClitentProtocol(readFn, writeFn)
-	clientProtocol.AddRequestMiddleware(MakeMiddlewareFunc(OrderMin, Stage_befor_send_data, func(message *Message) error {
+	clientProtocol.AddRequestMiddleware(apihttpprotocol.MakeMiddlewareFunc(apihttpprotocol.OrderMin, apihttpprotocol.Stage_befor_send_data, func(message *apihttpprotocol.Message) error {
 		curl := req.CurlCmd()
 		fmt.Println(curl) // 打印curl命令
 		return nil
