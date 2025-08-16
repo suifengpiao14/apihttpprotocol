@@ -1,7 +1,6 @@
 package serverprotocol
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -49,11 +48,6 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 	p.Request.GoStructRef = dst
 	p.Request.MiddlewareFuncs.Add(p.Request.GetIOReader())
-	err = p.Request.Start()
-	if err != nil {
-		fmt.Println("error:", err)
-	}
-
 	err = p.Request.Start()
 	if err != nil {
 		return err
@@ -132,5 +126,9 @@ func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
 		Data:    data,
 	}
 	message.GoStructRef = response
+	err := message.Next()
+	if err != nil {
+		return err
+	}
 	return nil
 }

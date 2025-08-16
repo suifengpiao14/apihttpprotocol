@@ -3,6 +3,7 @@ package apihttpprotocol
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
@@ -168,4 +169,15 @@ type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
+}
+
+func (rsp *Response) Validate() (err error) {
+	if rsp.Code != 0 {
+		if rsp.Message == "" {
+			rsp.Message = fmt.Sprintf("%v", rsp.Data)
+		}
+		err = errors.Errorf("response err code:%d,message:%s", rsp.Code, rsp.Message)
+		return err
+	}
+	return nil
 }

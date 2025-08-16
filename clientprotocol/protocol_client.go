@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spf13/cast"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 	"resty.dev/v3"
 )
@@ -42,6 +43,11 @@ func (c *ClientProtocol) ReadResponse(dst any) (err error) {
 		return err
 	}
 	return nil
+}
+
+func (c *ClientProtocol) GetHttpCode() int {
+	httpCode := cast.ToInt(c.Response.Metadata.Get(apihttpprotocol.MetaData_HttpCode, 0))
+	return httpCode
 }
 
 func (c *ClientProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
@@ -106,11 +112,13 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		if err != nil {
 			return err
 		}
+		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, response.StatusCode())
 		b := response.Bytes()
 		err = json.Unmarshal(b, message.GoStructRef)
 		if err != nil {
 			return err
 		}
+
 		return nil
 	}
 	writeFn := func(message *apihttpprotocol.Message) (err error) {
@@ -125,4 +133,20 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	})
 	return clientProtocol
+}
+
+func CodeMessageResponseMiddle(message *apihttpprotocol.Message) (err error) {
+	response := &apihttpprotocol.Response{
+		Data: message.GoStructRef,
+	}
+	message.GoStructRef = response
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	err = response.Validate()
+	if err != nil {
+		return err
+	}
+	return nil
 }
