@@ -1,10 +1,10 @@
 package serverprotocol
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 )
@@ -14,27 +14,27 @@ type ServerProtocol struct {
 	Response apihttpprotocol.Message
 }
 
-func NewServerProtocol(readFn apihttpprotocol.IOFn, writeFn apihttpprotocol.IOFn) *ServerProtocol {
+func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p := &ServerProtocol{}
 	p.WithReadIoFn(readFn).WithWriteIoFn(writeFn)
 	return p
 }
 
-func (p *ServerProtocol) WithWriteIoFn(ioFn apihttpprotocol.IOFn) *ServerProtocol {
+func (p *ServerProtocol) WithWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.Response.SetIOWriter(ioFn)
 	return p
 }
 
-func (p *ServerProtocol) WithReadIoFn(ioFn apihttpprotocol.IOFn) *ServerProtocol {
+func (p *ServerProtocol) WithReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.Request.SetIOReader(ioFn)
 	return p
 }
-func (p *ServerProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.MiddlewareFunc) *ServerProtocol {
+func (p *ServerProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.Request.AddMiddleware(middlewares...)
 	return p
 }
 
-func (p *ServerProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.MiddlewareFunc) *ServerProtocol {
+func (p *ServerProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.Response.AddMiddleware(middlewares...)
 	return p
 }
@@ -46,17 +46,15 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 	}
 }
 
-func (p *ServerProtocol) ReadRequest(dst apihttpprotocol.ValidateI) (err error) {
-	if err := p.Request.HasIOReder(); err != nil {
-		err = errors.WithMessagef(err, "read request struct %v", p.Request.GoStructRef)
-		return err
-	}
+func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 	p.Request.GoStructRef = dst
-	err = p.Request.MiddlewareFuncs.Apply(&p.Request)
+	p.Request.MiddlewareFuncs.Add(p.Request.GetIOReader())
+	err = p.Request.Start()
 	if err != nil {
-		return err
+		fmt.Println("error:", err)
 	}
-	err = dst.Validate()
+
+	err = p.Request.Start()
 	if err != nil {
 		return err
 	}
@@ -64,12 +62,9 @@ func (p *ServerProtocol) ReadRequest(dst apihttpprotocol.ValidateI) (err error) 
 }
 
 func (p *ServerProtocol) WriteResponse(data any) (err error) {
-	if err := p.Response.HasIOWriter(); err != nil {
-		err = errors.WithMessagef(err, "write response struct %v", p.Request.GoStructRef)
-		return err
-	}
 	p.Response.GoStructRef = data
-	err = p.Response.MiddlewareFuncs.Apply(&p.Response)
+	p.Response.MiddlewareFuncs.Add(p.Response.GetIOWriter())
+	err = p.Response.Start()
 	if err != nil {
 		return err
 	}
@@ -123,23 +118,19 @@ type Response struct {
 	Data    any    `json:"data"`
 }
 
-// ProtocolMiddlewareCodeMessage 封装返回体code/message 协议
-func ApplyCodeMessageMiddle(p *ServerProtocol) *ServerProtocol {
-	protocol := p.AddResponseMiddleware(apihttpprotocol.MakeMiddlewareFuncWriteData(func(message *apihttpprotocol.Message) error {
-		code := cast.ToInt(message.GetMetaData(apihttpprotocol.MetaData_Code, apihttpprotocol.MetaData_Code_Success))
-		data := message.GoStructRef
-		msg := "success"
-		if code > 0 {
-			msg = cast.ToString(data)
-			data = nil
-		}
-		response := &Response{
-			Code:    code,
-			Message: msg,
-			Data:    data,
-		}
-		message.GoStructRef = response
-		return nil
-	}))
-	return protocol
+func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
+	code := cast.ToInt(message.GetMetaData(apihttpprotocol.MetaData_Code, apihttpprotocol.MetaData_Code_Success))
+	data := message.GoStructRef
+	msg := "success"
+	if code > 0 {
+		msg = cast.ToString(data)
+		data = nil
+	}
+	response := &Response{
+		Code:    code,
+		Message: msg,
+		Data:    data,
+	}
+	message.GoStructRef = response
+	return nil
 }
