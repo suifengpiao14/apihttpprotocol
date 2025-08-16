@@ -37,13 +37,13 @@ func (m *Metadata) Set(key string, value any) {
 	if m == nil {
 		return
 	}
+	if *m == nil {
+		*m = make(map[string]any)
+	}
 	(*m)[key] = value
 }
 
 func (m *Message) SetMetaData(key string, value any) {
-	if m.Metadata == nil {
-		m.Metadata = &Metadata{}
-	}
 	m.Metadata.Set(key, value)
 }
 func (m *Message) SetHeader(key string, value string) {
@@ -89,7 +89,7 @@ type Message struct {
 	Headers         map[string]string
 	RequestParams   map[string]string
 	GoStructRef     any // 可以用于存储请求参数或响应结果
-	Metadata        *Metadata
+	Metadata        Metadata
 	MiddlewareFuncs MiddlewareFuncs // 中间件调用链
 	index           int             // 当前执行的中间件索引，类似Gin的index
 	URL             string          // 请求URL

@@ -74,9 +74,6 @@ func (p *ServerProtocol) ResponseFail(data any) {
 }
 
 func (p *ServerProtocol) SetBusineesCode(code int) *ServerProtocol {
-	if p.Response.Metadata == nil {
-		p.Response.Metadata = &apihttpprotocol.Metadata{}
-	}
 	p.Response.SetMetaData(apihttpprotocol.MetaData_Code, code)
 	return p
 }

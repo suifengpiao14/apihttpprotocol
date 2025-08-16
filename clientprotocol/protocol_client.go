@@ -22,7 +22,7 @@ type ClientProtocol struct {
 
 func NewClitentProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ClientProtocol {
 	p := &ClientProtocol{}
-	p = p.WithReadIoFn(readFn).WithReadIoFn(writeFn)
+	p = p.WithReadIoFn(readFn).WithWriteIoFn(writeFn)
 	return p
 }
 
@@ -107,14 +107,22 @@ var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
 
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()
+	req = req.SetMethod(method).SetURL(url) //部分接口不需要设置请求体,不会执行writeFn,又因为输出请求日志在readFn前,必须设置好,请求方法和地址,所以就在外部设置好
 	readFn := func(message *apihttpprotocol.Message) (err error) {
-		response, err := req.Execute(method, url)
+		curl := req.CurlCmd() //curl依赖 req 变量,所以不独立成middle
+		fmt.Println(curl)     // 打印curl命令
+		response, err := req.Send()
 		if err != nil {
 			return err
 		}
 		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, response.StatusCode())
 		b := response.Bytes()
 		err = json.Unmarshal(b, message.GoStructRef)
+		if err != nil {
+			return err
+		}
+
+		err = message.Next()
 		if err != nil {
 			return err
 		}
@@ -127,11 +135,6 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	}
 	clientProtocol := NewClitentProtocol(readFn, writeFn)
-	clientProtocol.AddRequestMiddleware(func(message *apihttpprotocol.Message) error {
-		curl := req.CurlCmd()
-		fmt.Println(curl) // 打印curl命令
-		return nil
-	})
 	return clientProtocol
 }
 
