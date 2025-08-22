@@ -4,15 +4,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
-	"strings"
-	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/spf13/cast"
 
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
+	"gitlab.huishoubao.com/gopackage/apihttpprotocol/clientprotocol"
 )
 
 /*
@@ -117,7 +113,7 @@ type CallerService struct {
 
 // Protocol2Client 二层协议 用于发送二层协议请求包、接收二层协议响应包 用于客户端
 type Protocol2Client struct {
-	Protocol      apihttpprotocol.ClientProtocol
+	Protocol      clientprotocol.ClientProtocol
 	ApiPath       string
 	RequestParam  Request
 	ResponseParam Response
@@ -127,50 +123,6 @@ type Protocol2Client struct {
 func NewProtocol2Client() *Protocol2Client {
 	p := &Protocol2Client{}
 	return p
-}
-
-func NewProtocol2Server() *Protocol2Server {
-	p := &Protocol2Server{}
-	return p
-}
-
-type Protocol2Type interface {
-	Protocol2Client | Protocol2Server
-}
-
-type Protocol2Server struct {
-	Protocol      apihttpprotocol.ServerProtocol
-	ApiPath       string
-	RequestParam  Request
-	ResponseParam Response
-	callerService CallerService
-}
-
-func NewProtocol2() Protocol2Server {
-	return Protocol2Server{}
-}
-
-func (p *Protocol2Server) WithCallerService(callerService CallerService) *Protocol2Server {
-	p.callerService = callerService
-	p.RequestParam.Head.CallerService = callerService.CallerServiceId
-	p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID, p.callerService.CallerServiceId)
-
-	return p
-}
-
-func (p *Protocol2Server) WithInterface(_interface string) *Protocol2Server {
-	p.RequestParam.Head.Interface = _interface
-	return p
-}
-
-func (p *Protocol2Server) WithApiPath(apiPath string) *Protocol2Server {
-	p.ApiPath = apiPath
-	_interface := strings.Trim(strings.ReplaceAll(apiPath, "/", "."), ".")
-	if p.RequestParam.Head.Interface == "" {
-		p.RequestParam.Head.Interface = _interface
-	}
-	return p
-
 }
 
 func (p Protocol2Client) WriteRequest(param any) (err error) {
@@ -195,21 +147,6 @@ func (p Protocol2Client) ReadResponse(dst ResponseI) (err error) {
 	return nil
 }
 
-func (p Protocol2Server) ReadRequest(param apihttpprotocol.ValidateI) (err error) {
-	p.RequestParam.Param = param
-	err = p.Protocol.ReadRequest(p.RequestParam)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p Protocol2Server) PacketResponse(param any) {
-	p.ResponseParam.Data.Data = param
-	p.Protocol.WriteResponse(p.ResponseParam)
-
-}
-
 const (
 	Http_header_HSB_OPENAPI_CALLERSERVICEID = "HSB-OPENAPI-CALLERSERVICEID"
 	Http_header_HSB_OPENAPI_SIGNATURE       = "HSB-OPENAPI-SIGNATURE"
@@ -228,74 +165,11 @@ func (p *Protocol2Client) UseSignature() *Protocol2Client {
 	return p
 }
 
-func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
-	p.Protocol.AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
-		Order: apihttpprotocol.OrderMax,
-		Stage: apihttpprotocol.Stage_io_read_data,
-		Fn: func(param *apihttpprotocol.Message) (err error) {
-			callerId := param.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
-			if callerId == "" {
-				err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
-				return err
-			}
-
-			inputSign := param.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
-			if inputSign == "" {
-				err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
-				return err
-			}
-			sign := apiSign(param.GetRaw(), p.callerService.CallerServiceKey)
-			if sign != inputSign {
-				err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
-				return err
-			}
-			return nil
-		},
-	})
-	return p
-}
-
 func apiSign(req string, key string) string {
 	signStr := req + "_" + key
 	digestBytes := md5.Sum([]byte(signStr))
 	md5Str := fmt.Sprintf("%x", digestBytes)
 	return md5Str
-}
-
-func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey string) Protocol2Server {
-	request := Request{
-		Head: Head{
-			Version: SerivceProtocol_version,
-			MsgType: SerivceProtocol_msgType_request,
-			// Timestamps:    cast.ToString(time.Now().Unix()), //这个参数在实际请求时生成
-			// InvokeId:      uuid.New().String(),//这个参数在实际请求时生成
-			CallerService: "",
-			GroupNo:       SerivceProtocol_GroupNo,
-			Interface:     "",
-			Remark:        "",
-		},
-	}
-	response := Response{}
-	protocol := apihttpprotocol.NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
-		Order: 1,
-		Stage: apihttpprotocol.Stage_io_write_data,
-		Fn: func(message *apihttpprotocol.Message) error {
-			request.Head.Timestamps = cast.ToString(time.Now().Unix()) //这个参数在实际请求时生成
-			request.Head.InvokeId = uuid.New().String()                //这个参数在实际请求时生成
-			message.GoStructRef = request
-			return nil
-		},
-	})
-	s := Protocol2Server{
-		callerService: CallerService{
-			CallerServiceId:  callerServiceId,
-			CallerServiceKey: callerServiceKey,
-		},
-		Protocol:      *protocol,
-		RequestParam:  request,
-		ResponseParam: response,
-	}
-	return s
 }
 
 const (

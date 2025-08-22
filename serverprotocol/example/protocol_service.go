@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cast"
 
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
+	"gitlab.huishoubao.com/gopackage/apihttpprotocol/serverprotocol"
 )
 
 /*
@@ -115,31 +116,13 @@ type CallerService struct {
 	CallerServiceKey string `json:"callerServiceKey"`
 }
 
-// Protocol2Client 二层协议 用于发送二层协议请求包、接收二层协议响应包 用于客户端
-type Protocol2Client struct {
-	Protocol      apihttpprotocol.ClientProtocol
-	ApiPath       string
-	RequestParam  Request
-	ResponseParam Response
-	callerService CallerService
-}
-
-func NewProtocol2Client() *Protocol2Client {
-	p := &Protocol2Client{}
-	return p
-}
-
 func NewProtocol2Server() *Protocol2Server {
 	p := &Protocol2Server{}
 	return p
 }
 
-type Protocol2Type interface {
-	Protocol2Client | Protocol2Server
-}
-
 type Protocol2Server struct {
-	Protocol      apihttpprotocol.ServerProtocol
+	Protocol      serverprotocol.ServerProtocol
 	ApiPath       string
 	RequestParam  Request
 	ResponseParam Response
@@ -173,28 +156,6 @@ func (p *Protocol2Server) WithApiPath(apiPath string) *Protocol2Server {
 
 }
 
-func (p Protocol2Client) WriteRequest(param any) (err error) {
-	p.RequestParam.Param = param
-	err = p.Protocol.WriteRequest(p.RequestParam)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p Protocol2Client) ReadResponse(dst ResponseI) (err error) {
-	p.ResponseParam.Data.Data = dst
-	err = p.Protocol.ReadResponse(p.ResponseParam)
-	if err != nil {
-		return err
-	}
-	err = dst.Error()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 func (p Protocol2Server) ReadRequest(param apihttpprotocol.ValidateI) (err error) {
 	p.RequestParam.Param = param
 	err = p.Protocol.ReadRequest(p.RequestParam)
@@ -214,19 +175,6 @@ const (
 	Http_header_HSB_OPENAPI_CALLERSERVICEID = "HSB-OPENAPI-CALLERSERVICEID"
 	Http_header_HSB_OPENAPI_SIGNATURE       = "HSB-OPENAPI-SIGNATURE"
 )
-
-func (p *Protocol2Client) UseSignature() *Protocol2Client {
-	p.Protocol.AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
-		Order: 1,
-		Stage: apihttpprotocol.Stage_befor_send_data,
-		Fn: func(message *apihttpprotocol.Message) error {
-			sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
-			p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_SIGNATURE, sign)
-			return nil
-		},
-	})
-	return p
-}
 
 func (p *Protocol2Server) UseCheckSignature() *Protocol2Server {
 	p.Protocol.AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
@@ -276,7 +224,7 @@ func NewSerivceProtocol(c *gin.Context, callerServiceId string, callerServiceKey
 		},
 	}
 	response := Response{}
-	protocol := apihttpprotocol.NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
+	protocol := serverprotocol.NewGinSerivceProtocol(c).AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
 		Order: 1,
 		Stage: apihttpprotocol.Stage_io_write_data,
 		Fn: func(message *apihttpprotocol.Message) error {
@@ -315,10 +263,4 @@ type HttpError struct {
 func (e HttpError) Error() string {
 	b, _ := json.Marshal(e)
 	return string(b)
-}
-
-// 响应必须实现 Error() 方法判断是否业务失败
-
-type ResponseI interface {
-	Error() error
 }
