@@ -166,7 +166,7 @@ func (m *Message) Next() (err error) {
 	return nil
 }
 
-func (m *Message) Start() (err error) {
+func (m *Message) Run() (err error) {
 	m.index = -1
 	err = m.Next()
 	return err

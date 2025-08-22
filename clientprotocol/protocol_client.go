@@ -29,7 +29,7 @@ func NewClitentProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpproto
 func (c *ClientProtocol) WriteRequest(data any) (err error) {
 	c.Request.GoStructRef = data
 	c.Request.MiddlewareFuncs.Add(c.Request.GetIOWriter())
-	err = c.Request.Start()
+	err = c.Request.Run()
 	if err != nil {
 		return err
 	}
@@ -38,7 +38,7 @@ func (c *ClientProtocol) WriteRequest(data any) (err error) {
 func (c *ClientProtocol) ReadResponse(dst any) (err error) {
 	c.Response.GoStructRef = dst
 	c.Response.MiddlewareFuncs.Add(c.Response.GetIOReader())
-	err = c.Response.Start()
+	err = c.Response.Run()
 	if err != nil {
 		return err
 	}

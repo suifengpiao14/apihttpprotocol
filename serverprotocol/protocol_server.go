@@ -50,7 +50,7 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 	p.Request.GoStructRef = dst
 	p.Request.MiddlewareFuncs.Add(p.Request.GetIOReader())
-	err = p.Request.Start()
+	err = p.Request.Run()
 	if err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 func (p *ServerProtocol) WriteResponse(data any) (err error) {
 	p.Response.GoStructRef = data
 	p.Response.MiddlewareFuncs.Add(p.Response.GetIOWriter())
-	err = p.Response.Start()
+	err = p.Response.Run()
 	if err != nil {
 		return err
 	}
