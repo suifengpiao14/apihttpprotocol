@@ -18,7 +18,9 @@ type ServerProtocol struct {
 
 func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p := &ServerProtocol{
-		Request:  &apihttpprotocol.Message{},
+		Request: &apihttpprotocol.Message{
+			Context: context.Background(),
+		},
 		Response: &apihttpprotocol.Message{},
 	}
 	p.Response.Context = context.WithValue(p.Request.Context, ContextReqeustMessageKey, p.Request)
