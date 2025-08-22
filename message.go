@@ -100,11 +100,6 @@ type Message struct {
 	responseError   error // 记录返回错误
 }
 
-// Error 实现error 接口,方便将message 作为error返回，便于统一处理错误信息
-func (m Message) Error() string {
-	return m.responseError.Error()
-}
-
 func (m *Message) SetResponseError(err error) *Message {
 	m.responseError = err
 	return m
