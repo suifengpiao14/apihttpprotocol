@@ -1,6 +1,8 @@
 package serverprotocol
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -92,6 +94,14 @@ func (c *ServerProtocol) SetContentTypeJson() *ServerProtocol {
 
 func NewGinSerivceProtocol(c *gin.Context) *ServerProtocol {
 	readFn := func(message *apihttpprotocol.Message) (err error) {
+		ioReader := c.Request.Body
+		b, err := io.ReadAll(ioReader)
+		if err != nil {
+			return err
+		}
+		defer c.Request.Body.Close() // 关闭请求体，防止内存泄漏
+		c.Request.Body = io.NopCloser(bytes.NewReader(b))
+
 		err = c.BindJSON(message.GoStructRef)
 		return err
 	}

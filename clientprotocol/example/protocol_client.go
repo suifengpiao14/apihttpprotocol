@@ -120,8 +120,8 @@ type Protocol2Client struct {
 	callerService CallerService
 }
 
-func NewProtocol2Client() *Protocol2Client {
-	p := &Protocol2Client{}
+func NewProtocol2Client() *clientprotocol.ClientProtocol {
+	p := &clientprotocol.ClientProtocol{}
 	return p
 }
 
@@ -153,14 +153,10 @@ const (
 )
 
 func (p *Protocol2Client) UseSignature() *Protocol2Client {
-	p.Protocol.AddRequestMiddleware(apihttpprotocol.MiddlewareFunc{
-		Order: 1,
-		Stage: apihttpprotocol.Stage_befor_send_data,
-		Fn: func(message *apihttpprotocol.Message) error {
-			sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
-			p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_SIGNATURE, sign)
-			return nil
-		},
+	p.Protocol.AddRequestMiddleware(func(message *apihttpprotocol.Message) error {
+		sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
+		p.Protocol.Request.SetHeader(Http_header_HSB_OPENAPI_SIGNATURE, sign)
+		return nil
 	})
 	return p
 }

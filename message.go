@@ -88,7 +88,8 @@ type Message struct {
 	Context         context.Context
 	Headers         map[string]string
 	RequestParams   map[string]string
-	GoStructRef     any // 可以用于存储请求参数或响应结果
+	raw             []byte // 原始请求或响应数据，可用于签名校验等场景
+	GoStructRef     any    // 可以用于存储请求参数或响应结果
 	Metadata        Metadata
 	MiddlewareFuncs MiddlewareFuncs // 中间件调用链
 	index           int             // 当前执行的中间件索引，类似Gin的index
@@ -96,11 +97,29 @@ type Message struct {
 	Method          string          // 请求方法
 	_IOReader       HandlerFunc
 	_IOWriter       HandlerFunc
+	error           error // 记录错误，虽然请求时需要特意去Message.Error,但是响应是能区分成功和失败
+}
+
+// Error 实现error 接口,方便将message 作为error返回，便于统一处理错误信息
+func (m Message) Error() string {
+	return m.error.Error()
+}
+
+func (m *Message) SetError(err error) *Message {
+	m.error = err
+	return m
+}
+func (m *Message) GetError(err error) error {
+	return m.error
 }
 
 func (m *Message) SetIOReader(ioFn HandlerFunc) *Message {
 	m._IOReader = ioFn
 	return m
+}
+
+func (m *Message) GetRaw() []byte {
+	return m.raw
 }
 func (m *Message) GetIOReader() (ioFn HandlerFunc) {
 	if m._IOReader == nil {
@@ -132,7 +151,7 @@ func (m *Message) Back() *Message {
 // }
 
 // 定义中间件函数类型，与Gin的HandlerFunc对应
-type HandlerFunc func(*Message) (err error)
+type HandlerFunc func(message *Message) (err error)
 
 // Next 传递控制权给下一个中间件
 // 实现逻辑：索引+1并执行下一个中间件
