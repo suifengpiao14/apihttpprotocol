@@ -97,20 +97,20 @@ type Message struct {
 	Method          string          // 请求方法
 	_IOReader       HandlerFunc
 	_IOWriter       HandlerFunc
-	error           error // 记录错误，虽然请求时需要特意去Message.Error,但是响应是能区分成功和失败
+	responseError   error // 记录返回错误
 }
 
 // Error 实现error 接口,方便将message 作为error返回，便于统一处理错误信息
 func (m Message) Error() string {
-	return m.error.Error()
+	return m.responseError.Error()
 }
 
-func (m *Message) SetError(err error) *Message {
-	m.error = err
+func (m *Message) SetResponseError(err error) *Message {
+	m.responseError = err
 	return m
 }
-func (m *Message) GetError(err error) error {
-	return m.error
+func (m *Message) GetResponseError(err error) error {
+	return m.responseError
 }
 
 func (m *Message) SetIOReader(ioFn HandlerFunc) *Message {
