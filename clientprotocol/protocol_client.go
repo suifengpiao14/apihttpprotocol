@@ -46,7 +46,7 @@ func (c *ClientProtocol) ReadResponse(dst any) (err error) {
 }
 
 func (c *ClientProtocol) GetHttpCode() int {
-	httpCode := cast.ToInt(c.Response.Metadata.Get(apihttpprotocol.MetaData_HttpCode, 0))
+	httpCode := cast.ToInt(c.Response.Metadata.GetWithDefault(apihttpprotocol.MetaData_HttpCode, 0))
 	return httpCode
 }
 

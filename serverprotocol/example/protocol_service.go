@@ -4,8 +4,10 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/cast"
 
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol/serverprotocol"
@@ -126,25 +128,6 @@ func (cs CallerServices) GetCallerService(callerId string) (callerService *Calle
 	return callerService, nil
 }
 
-func NewProtocol2Server() *Protocol2Server {
-	p := &Protocol2Server{}
-	return p
-}
-
-type Protocol2Server struct {
-	Protocol      serverprotocol.ServerProtocol
-	ApiPath       string
-	RequestParam  Request
-	ResponseParam Response
-	callerService CallerService
-}
-
-func NewProtocol2(callerService CallerService) *serverprotocol.ServerProtocol {
-	p := &serverprotocol.ServerProtocol{}
-	p.AddRequestMiddleware(ProtocolV2ReqeustMiddle)
-	return p
-}
-
 func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
 	requestParam := &Request{
 		Param: message.GoStructRef,
@@ -158,17 +141,37 @@ func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
 	return nil
 }
 func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
+	requestMessage := serverprotocol.ContextGetReqeustMessage(message.Context)
+	request, ok := requestMessage.GoStructRef.(*Request)
+	if !ok {
+		err = errors.New("请求上下文丢失")
+		return err
+	}
 	respone := &Response{
-		Head: Head{},
+		Head: Head{
+			Version:       request.Head.Version,
+			MsgType:       "response",
+			Timestamps:    cast.ToString(time.Now().Local().Unix()),
+			InvokeId:      request.Head.InvokeId,
+			CallerService: request.Head.CallerService,
+			GroupNo:       request.Head.GroupNo,
+			Interface:     request.Head.Interface,
+			Remark:        "respone",
+		},
 		Data: Data{
 			Ret:     "0",
-			ErrCode: "0",
+			ErrCode: message.GetBusinessCodeWithDefault("0"),
 			ErrStr:  "success",
 			Data:    message.GoStructRef,
 		},
 	}
 
-	//message.SetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID, callerService.CallerServiceId)
+	if message.ResponseError != nil {
+		respone.Data.Ret = "1"
+		respone.Data.ErrCode = message.GetBusinessCodeWithDefault("1")
+		respone.Data.ErrStr = message.ResponseError.Error()
+	}
+
 	message.GoStructRef = respone
 	err = message.Next()
 	if err != nil {
@@ -177,7 +180,7 @@ func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
 	return nil
 }
 
-func CheckSignatureMiddle(callerServices CallerServices) func(message *apihttpprotocol.Message) (err error) {
+func CheckRequestSignatureMiddle(callerServices CallerServices) func(message *apihttpprotocol.Message) (err error) {
 	return func(message *apihttpprotocol.Message) (err error) {
 		err = message.Next()
 		if err != nil {
@@ -226,15 +229,3 @@ const (
 	SerivceProtocol_msgType_response = "response"
 	SerivceProtocol_GroupNo          = "1"
 )
-
-// 错误处理结构
-
-type HttpError struct {
-	HttpStatus string `json:"httpStatus"`
-	HttpBody   string `json:"httpBody"`
-}
-
-func (e HttpError) Error() string {
-	b, _ := json.Marshal(e)
-	return string(b)
-}

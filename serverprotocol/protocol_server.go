@@ -2,6 +2,7 @@ package serverprotocol
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 
@@ -11,12 +12,16 @@ import (
 )
 
 type ServerProtocol struct {
-	Request  apihttpprotocol.Message
-	Response apihttpprotocol.Message
+	Request  *apihttpprotocol.Message
+	Response *apihttpprotocol.Message
 }
 
 func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p := &ServerProtocol{}
+	p := &ServerProtocol{
+		Request:  &apihttpprotocol.Message{},
+		Response: &apihttpprotocol.Message{},
+	}
+	p.Response.Context = context.WithValue(p.Request.Context, ContextReqeustMessageKey, p.Request)
 	p.WithReadIoFn(readFn).WithWriteIoFn(writeFn)
 	return p
 }
@@ -67,17 +72,12 @@ func (p *ServerProtocol) WriteResponse(data any) (err error) {
 	return nil
 }
 
-func (p *ServerProtocol) ResponseFail(data any) {
-	p.Response.SetMetaData(apihttpprotocol.MetaData_Code, apihttpprotocol.MetaData_Code_Fail)
-	err := p.WriteResponse(data)
+func (p *ServerProtocol) ResponseFail(err error) {
+	p.Response.ResponseError = err
+	err = p.WriteResponse(nil)
 	if err != nil {
 		panic(err) // 业务本身报错，在写入时还报错，直接panic ，避免循环调用
 	}
-}
-
-func (p *ServerProtocol) SetBusineesCode(code int) *ServerProtocol {
-	p.Response.SetMetaData(apihttpprotocol.MetaData_Code, code)
-	return p
 }
 
 func (c *ServerProtocol) SetContentType(contentType string) *ServerProtocol {
@@ -88,6 +88,14 @@ func (c *ServerProtocol) SetContentTypeJson() *ServerProtocol {
 	contentType := "application/json"
 	c.SetContentType(contentType)
 	return c
+}
+
+type ContextReqeustMessageKeyType string
+
+var ContextReqeustMessageKey ContextReqeustMessageKeyType = "ContextReqeustMessage"
+
+func ContextGetReqeustMessage(ctx context.Context) *apihttpprotocol.Message {
+	return ctx.Value(ContextReqeustMessageKey).(*apihttpprotocol.Message)
 }
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
@@ -101,7 +109,9 @@ func NewGinSerivceProtocol(c *gin.Context) *ServerProtocol {
 		}
 		defer c.Request.Body.Close() // 关闭请求体，防止内存泄漏
 		c.Request.Body = io.NopCloser(bytes.NewReader(b))
-
+		for k, v := range c.Request.Header {
+			message.SetHeader(k, v[0])
+		}
 		err = c.BindJSON(message.GoStructRef)
 		return err
 	}
@@ -120,20 +130,20 @@ type Response struct {
 }
 
 func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
-	code := cast.ToInt(message.GetMetaData(apihttpprotocol.MetaData_Code, apihttpprotocol.MetaData_Code_Success))
-	data := message.GoStructRef
-	msg := "success"
-	if code > 0 {
-		msg = cast.ToString(data)
-		data = nil
-	}
 	response := &Response{
-		Code:    code,
-		Message: msg,
-		Data:    data,
+		Data: message.GoStructRef,
+	}
+	err := message.ResponseError
+	if err != nil {
+		response.Code = 1
+		response.Message = err.Error()
+	}
+	businessCode, exists := message.GetBusinessCode()
+	if exists {
+		response.Code = cast.ToInt(businessCode)
 	}
 	message.GoStructRef = response
-	err := message.Next()
+	err = message.Next()
 	if err != nil {
 		return err
 	}

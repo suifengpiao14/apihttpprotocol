@@ -3,6 +3,7 @@ package apihttpprotocol
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/pkg/errors"
@@ -10,27 +11,31 @@ import (
 )
 
 const (
-	MetaData_Code      = "code"
 	MetaData_HttpCode  = "httpCode"
 	MetaData_RequestID = "requestID"
 )
 
 var (
-	MetaData_Code_Success = 0
-	MetaData_Code_Fail    = 1
+	MetaData_Response_Business_Code_Success = "0"
+	MetaData_Response_Business_Code_Fail    = "1"
 )
 
 type Metadata map[string]any
 
-func (m *Metadata) Get(key string, defau any) any {
-	if m == nil || *m == nil {
-		return defau
-	}
-	v, ok := (*m)[key]
-	if !ok {
+func (m *Metadata) GetWithDefault(key string, defau any) any {
+	v, exists := m.Get(key)
+	if !exists {
 		return defau
 	}
 	return v
+}
+
+func (m *Metadata) Get(key string) (value any, exists bool) {
+	if m == nil || *m == nil {
+		return nil, false
+	}
+	v, ok := (*m)[key]
+	return v, ok
 }
 
 func (m *Metadata) Set(key string, value any) {
@@ -65,15 +70,8 @@ func (m *Message) SetRequestId(requestId string) *Message {
 	return m
 }
 func (m *Message) GetRequestId() (requestId string) {
-	requestID := cast.ToString(m.Metadata.Get(MetaData_RequestID, "unknown"))
+	requestID := cast.ToString(m.Metadata.GetWithDefault(MetaData_RequestID, "unknown"))
 	return requestID
-}
-
-func (m *Message) GetMetaData(key string, defau any) any {
-	if m.Metadata == nil {
-		return defau
-	}
-	return m.Metadata.Get(key, defau)
 }
 
 func (m *Message) AddMiddleware(middlewares ...HandlerFunc) *Message {
@@ -85,27 +83,45 @@ var ERRIOFnIsNil = errors.New("io function is nil")
 
 // 定义Message结构体（用户提供）
 type Message struct {
-	Context         context.Context
-	Headers         map[string]string
-	RequestParams   map[string]string
-	raw             []byte // 原始请求或响应数据，可用于签名校验等场景
-	GoStructRef     any    // 可以用于存储请求参数或响应结果
-	Metadata        Metadata
-	MiddlewareFuncs MiddlewareFuncs // 中间件调用链
-	index           int             // 当前执行的中间件索引，类似Gin的index
-	URL             string          // 请求URL
-	Method          string          // 请求方法
-	_IOReader       HandlerFunc
-	_IOWriter       HandlerFunc
-	responseError   error // 记录返回错误
+	Context              context.Context
+	Headers              map[string]string
+	RequestParams        map[string]string
+	raw                  []byte // 原始请求或响应数据，可用于签名校验等场景
+	GoStructRef          any    // 可以用于存储请求参数或响应结果
+	Metadata             Metadata
+	MiddlewareFuncs      MiddlewareFuncs // 中间件调用链
+	index                int             // 当前执行的中间件索引，类似Gin的index
+	URL                  string          // 请求URL
+	Method               string          // 请求方法
+	_IOReader            HandlerFunc
+	_IOWriter            HandlerFunc
+	ResponseError        error   // 记录返回错误
+	responseBusinessCode *string // 业务码，用于区分成功或失败，"0"表示成功，"1"表示失败,需要区分没设置，还是设置""等场景
+	//requestMessage       *Message // 请求消息，用于在中间件中获取原始请求参数
 }
 
-func (m *Message) SetResponseError(err error) *Message {
-	m.responseError = err
-	return m
+func (m *Message) SetBusinessCode(businessCode string) {
+	if businessCode == "" {
+		return
+	}
+	m.responseBusinessCode = &businessCode
 }
-func (m *Message) GetResponseError(err error) error {
-	return m.responseError
+
+//	func (m *Message) GetRequestMessage() *Message {
+//		return m.requestMessage
+//	}
+func (m *Message) GetBusinessCode() (businessCode string, exists bool) {
+	if m.responseBusinessCode == nil {
+		return "", false
+	}
+	return *m.responseBusinessCode, true
+}
+
+func (m *Message) GetBusinessCodeWithDefault(defaultCode string) string {
+	if m.responseBusinessCode == nil {
+		return defaultCode
+	}
+	return *m.responseBusinessCode
 }
 
 func (m *Message) SetIOReader(ioFn HandlerFunc) *Message {
@@ -194,4 +210,16 @@ func (rsp *Response) Validate() (err error) {
 		return err
 	}
 	return nil
+}
+
+// 错误处理结构
+
+type HttpError struct {
+	HttpStatus string `json:"httpStatus"`
+	HttpBody   string `json:"httpBody"`
+}
+
+func (e HttpError) Error() string {
+	b, _ := json.Marshal(e)
+	return string(b)
 }
