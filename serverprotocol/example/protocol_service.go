@@ -4,14 +4,46 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 
+	"github.com/go-playground/locales/zh"
+	ut "github.com/go-playground/universal-translator"
+	"github.com/go-playground/validator/v10"
+	translations "github.com/go-playground/validator/v10/translations/zh"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol/serverprotocol"
 )
+
+type ServerProtocol struct {
+	serverprotocol.ServerProtocol
+}
+
+func NewProtocolv2(c *gin.Context) *ServerProtocol {
+	p := &ServerProtocol{
+		ServerProtocol: *serverprotocol.NewGinSerivceProtocol(c),
+	}
+	p.AddRequestMiddleware(ValidateHeaderMiddle, ProtocolV2ReqeustMiddle).AddResponseMiddleware(ProtocolV2ResponseMiddle)
+	return p
+}
+
+//启用验证入参中间件
+
+func (s ServerProtocol) WithValidate() ServerProtocol {
+	s.AddRequestMiddleware(ValidateRequestMiddle)
+	return s
+}
+
+// 启用验证签名中间件
+func (s ServerProtocol) WithCheckSignature() ServerProtocol {
+	s.AddRequestMiddleware(CheckRequestSignatureMiddle(""))
+	return s
+}
 
 /*
  {
@@ -56,7 +88,7 @@ type Head struct {
 	Version       string `json:"_version"`
 	MsgType       string `json:"_msgType"`
 	Timestamps    string `json:"_timestamps"`
-	InvokeId      string `json:"_invokeId"`
+	InvokeId      string `json:"_invokeId" validate:"required"`
 	CallerService string `json:"_callerServiceId"`
 	GroupNo       string `json:"_groupNo"`
 	Interface     string `json:"_interface"`
@@ -132,7 +164,6 @@ func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
 	requestParam := &Request{
 		Param: message.GoStructRef,
 	}
-	//message.SetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID, callerService.CallerServiceId)
 	message.GoStructRef = requestParam
 	err = message.Next()
 	if err != nil {
@@ -180,7 +211,27 @@ func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
 	return nil
 }
 
-func CheckRequestSignatureMiddle(callerServices CallerServices) func(message *apihttpprotocol.Message) (err error) {
+// ValidateHeaderMiddle 验证头部传参，但是不验证签名
+func ValidateHeaderMiddle(message *apihttpprotocol.Message) (err error) {
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
+	if callerId == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
+		return err
+	}
+
+	inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
+	if inputSign == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
+		return err
+	}
+	return nil
+}
+
+func CheckRequestSignatureMiddle(callerKey string) func(message *apihttpprotocol.Message) (err error) {
 	return func(message *apihttpprotocol.Message) (err error) {
 		err = message.Next()
 		if err != nil {
@@ -197,18 +248,53 @@ func CheckRequestSignatureMiddle(callerServices CallerServices) func(message *ap
 			err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
 			return err
 		}
+
 		body := string(message.GetRaw())
-		callerService, err := callerServices.GetCallerService(callerId)
-		if err != nil {
-			return err
-		}
-		sign := apiSign(body, callerService.CallerServiceKey)
+		sign := apiSign(body, callerKey)
 		if sign != inputSign {
 			err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
 			return err
 		}
 		return nil
 	}
+
+}
+
+// 返回json真实名
+func getStructJsonTag(fld reflect.StructField) string {
+	if strList := strings.SplitN(fld.Tag.Get("json"), ",", 2); len(strList) > 0 {
+		if strList[0] == "-" {
+			return fld.Name
+		}
+		return strList[0]
+	}
+	return fld.Name
+}
+
+func ValidateRequestMiddle(message *apihttpprotocol.Message) (err error) {
+	err = message.Next() //读取数据后
+	if err != nil {
+		return err
+	}
+	validate := validator.New()
+	validate.RegisterTagNameFunc(getStructJsonTag)
+
+	err = validate.Struct(message.GoStructRef)
+	if errors.Is(err, &validator.InvalidValidationError{}) {
+		err = nil // 如果message.GoStructRef 不为结构体，忽略验证，方便支持map[string]any 等格式的请求参数
+	}
+	if err != nil {
+		//验证器注册翻译器
+		uni := ut.New(zh.New())
+		trans, _ := uni.GetTranslator("zh")
+		_ = translations.RegisterDefaultTranslations(validate, trans)
+
+		for _, verr := range err.(validator.ValidationErrors) {
+			return errors.New(verr.Translate(trans))
+		}
+	}
+
+	return nil
 }
 
 const (
@@ -222,10 +308,3 @@ func apiSign(req string, key string) string {
 	md5Str := fmt.Sprintf("%x", digestBytes)
 	return md5Str
 }
-
-const (
-	SerivceProtocol_version          = "0.01"
-	SerivceProtocol_msgType_request  = "request"
-	SerivceProtocol_msgType_response = "response"
-	SerivceProtocol_GroupNo          = "1"
-)

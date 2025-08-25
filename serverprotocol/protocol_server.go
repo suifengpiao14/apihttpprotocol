@@ -1,8 +1,8 @@
 package serverprotocol
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 
@@ -12,62 +12,62 @@ import (
 )
 
 type ServerProtocol struct {
-	Request  *apihttpprotocol.Message
-	Response *apihttpprotocol.Message
+	request  *apihttpprotocol.Message
+	response *apihttpprotocol.Message
 }
 
 func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p := &ServerProtocol{
-		Request: &apihttpprotocol.Message{
+		request: &apihttpprotocol.Message{
 			Context: context.Background(),
 		},
-		Response: &apihttpprotocol.Message{},
+		response: &apihttpprotocol.Message{},
 	}
-	p.Response.Context = context.WithValue(p.Request.Context, ContextReqeustMessageKey, p.Request)
-	p.WithReadIoFn(readFn).WithWriteIoFn(writeFn)
+	p.response.Context = context.WithValue(p.request.Context, ContextReqeustMessageKey, p.request)
+	p.withReadIoFn(readFn).withWriteIoFn(writeFn)
 	return p
 }
 
-func (p *ServerProtocol) WithWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.Response.SetIOWriter(ioFn)
+func (p *ServerProtocol) withWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
+	p.response.SetIOWriter(ioFn)
 	return p
 }
 
-func (p *ServerProtocol) WithReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.Request.SetIOReader(ioFn)
+func (p *ServerProtocol) withReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
+	p.request.SetIOReader(ioFn)
 	return p
 }
 func (p *ServerProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.Request.AddMiddleware(middlewares...)
+	p.request.AddMiddleware(middlewares...)
 	return p
 }
 
 func (p *ServerProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.Response.AddMiddleware(middlewares...)
+	p.response.AddMiddleware(middlewares...)
 	return p
 }
 
 func (p *ServerProtocol) ResponseSuccess(data any) {
-	err := p.WriteResponse(data)
+	err := p.writeResponse(data)
 	if err != nil {
 		p.ResponseFail(err)
 	}
 }
 
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
-	p.Request.GoStructRef = dst
-	p.Request.MiddlewareFuncs.Add(p.Request.GetIOReader())
-	err = p.Request.Run()
+	p.request.GoStructRef = dst
+	p.request.MiddlewareFuncs.Add(p.request.GetIOReader())
+	err = p.request.Run()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p *ServerProtocol) WriteResponse(data any) (err error) {
-	p.Response.GoStructRef = data
-	p.Response.MiddlewareFuncs.Add(p.Response.GetIOWriter())
-	err = p.Response.Run()
+func (p *ServerProtocol) writeResponse(data any) (err error) {
+	p.response.GoStructRef = data
+	p.response.MiddlewareFuncs.Add(p.response.GetIOWriter())
+	err = p.response.Run()
 	if err != nil {
 		return err
 	}
@@ -75,20 +75,19 @@ func (p *ServerProtocol) WriteResponse(data any) (err error) {
 }
 
 func (p *ServerProtocol) ResponseFail(err error) {
-	p.Response.ResponseError = err
-	err = p.WriteResponse(nil)
+	p.response.ResponseError = err
+	err = p.writeResponse(nil)
 	if err != nil {
 		panic(err) // 业务本身报错，在写入时还报错，直接panic ，避免循环调用
 	}
 }
 
-func (c *ServerProtocol) SetContentType(contentType string) *ServerProtocol {
-	c.Request.SetHeader("Content-Type", contentType)
-	return c
-}
-func (c *ServerProtocol) SetContentTypeJson() *ServerProtocol {
-	contentType := "application/json"
-	c.SetContentType(contentType)
+const (
+	ContentTypeJson = "application/json"
+)
+
+func (c *ServerProtocol) SetResponseHeader(key string, value string) *ServerProtocol {
+	c.response.SetHeader(key, value)
 	return c
 }
 
@@ -110,11 +109,12 @@ func NewGinSerivceProtocol(c *gin.Context) *ServerProtocol {
 			return err
 		}
 		defer c.Request.Body.Close() // 关闭请求体，防止内存泄漏
-		c.Request.Body = io.NopCloser(bytes.NewReader(b))
+		message.SetRaw(b)
+		//c.Request.Body = io.NopCloser(bytes.NewReader(b))
 		for k, v := range c.Request.Header {
 			message.SetHeader(k, v[0])
 		}
-		err = c.BindJSON(message.GoStructRef)
+		err = json.Unmarshal(b, &message.GoStructRef)
 		return err
 	}
 	writeFn := func(message *apihttpprotocol.Message) (err error) {

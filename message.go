@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
@@ -53,17 +54,16 @@ func (m *Message) SetMetaData(key string, value any) {
 }
 func (m *Message) SetHeader(key string, value string) {
 	if m.Headers == nil {
-		m.Headers = map[string]string{}
+		m.Headers = http.Header{}
 	}
-	m.Headers[key] = value
+	m.Headers.Add(key, value)
 }
 
 func (m *Message) GetHeader(key string) (value string) {
 	if m.Headers == nil {
-		m.Headers = map[string]string{}
+		m.Headers = http.Header{}
 	}
-	value = m.Headers[key]
-	return value
+	return m.Headers.Get(key)
 }
 func (m *Message) SetRequestId(requestId string) *Message {
 	m.Metadata.Set(MetaData_RequestID, requestId)
@@ -84,7 +84,7 @@ var ERRIOFnIsNil = errors.New("io function is nil")
 // 定义Message结构体（用户提供）
 type Message struct {
 	Context              context.Context
-	Headers              map[string]string
+	Headers              http.Header
 	RequestParams        map[string]string
 	raw                  []byte // 原始请求或响应数据，可用于签名校验等场景
 	GoStructRef          any    // 可以用于存储请求参数或响应结果
@@ -128,7 +128,9 @@ func (m *Message) SetIOReader(ioFn HandlerFunc) *Message {
 	m._IOReader = ioFn
 	return m
 }
-
+func (m *Message) SetRaw(b []byte) {
+	m.raw = b
+}
 func (m *Message) GetRaw() []byte {
 	return m.raw
 }

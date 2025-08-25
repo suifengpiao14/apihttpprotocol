@@ -16,29 +16,29 @@ import (
 )
 
 type ClientProtocol struct {
-	Request  apihttpprotocol.Message
-	Response apihttpprotocol.Message
+	request  apihttpprotocol.Message
+	response apihttpprotocol.Message
 }
 
 func NewClitentProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ClientProtocol {
 	p := &ClientProtocol{}
-	p = p.WithReadIoFn(readFn).WithWriteIoFn(writeFn)
+	p = p.withReadIoFn(readFn).withWriteIoFn(writeFn)
 	return p
 }
 
 func (c *ClientProtocol) WriteRequest(data any) (err error) {
-	c.Request.GoStructRef = data
-	c.Request.MiddlewareFuncs.Add(c.Request.GetIOWriter())
-	err = c.Request.Run()
+	c.request.GoStructRef = data
+	c.request.MiddlewareFuncs.Add(c.request.GetIOWriter())
+	err = c.request.Run()
 	if err != nil {
 		return err
 	}
 	return nil
 }
 func (c *ClientProtocol) ReadResponse(dst any) (err error) {
-	c.Response.GoStructRef = dst
-	c.Response.MiddlewareFuncs.Add(c.Response.GetIOReader())
-	err = c.Response.Run()
+	c.response.GoStructRef = dst
+	c.response.MiddlewareFuncs.Add(c.response.GetIOReader())
+	err = c.response.Run()
 	if err != nil {
 		return err
 	}
@@ -46,37 +46,32 @@ func (c *ClientProtocol) ReadResponse(dst any) (err error) {
 }
 
 func (c *ClientProtocol) GetHttpCode() int {
-	httpCode := cast.ToInt(c.Response.Metadata.GetWithDefault(apihttpprotocol.MetaData_HttpCode, 0))
+	httpCode := cast.ToInt(c.response.Metadata.GetWithDefault(apihttpprotocol.MetaData_HttpCode, 0))
 	return httpCode
 }
 
 func (c *ClientProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.Request.AddMiddleware(middlewares...)
+	c.request.AddMiddleware(middlewares...)
 	return c
 }
 
 func (c *ClientProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.Response.AddMiddleware(middlewares...)
+	c.response.AddMiddleware(middlewares...)
 	return c
 }
 
-func (c *ClientProtocol) SetContentType(contentType string) *ClientProtocol {
-	c.Request.SetHeader("Content-Type", contentType)
+func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
+	c.request.SetHeader(key, value)
+
 	return c
 }
-func (c *ClientProtocol) SetContentTypeJson() *ClientProtocol {
-	contentType := "application/json"
-	c.SetContentType(contentType)
+func (c *ClientProtocol) withWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
+	c.request.SetIOWriter(ioFn)
 	return c
 }
 
-func (c *ClientProtocol) WithWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.Request.SetIOWriter(ioFn)
-	return c
-}
-
-func (c *ClientProtocol) WithReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.Response.SetIOReader(ioFn)
+func (c *ClientProtocol) withReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
+	c.response.SetIOReader(ioFn)
 	return c
 }
 
@@ -130,7 +125,7 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	}
 	writeFn := func(message *apihttpprotocol.Message) (err error) {
-		req.SetHeaders(message.Headers)
+		req.SetHeaderMultiValues(message.Headers)
 		req.SetBody(message.GoStructRef)
 		return nil
 	}
