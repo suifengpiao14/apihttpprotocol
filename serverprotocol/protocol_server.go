@@ -134,8 +134,9 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn, writeFn apihttpprotocol.
 	return readFn, writeFn
 }
 
-func NewGinHander[I, O any](proto ServerProtocol, handler func(in I) (out O, err error)) func(c *gin.Context) {
+func NewGinHander[I any, O any](protoFn func() *ServerProtocol, handler func(in I) (out O, err error)) func(c *gin.Context) {
 	return func(c *gin.Context) {
+		proto := protoFn() //每次请求需要重新创建协议对象，防止并发安全问题
 		proto.WithIOFn(NewGinReadWriteMiddleware(c))
 		var in I
 		err := proto.ReadRequest(&in)
