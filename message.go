@@ -95,9 +95,9 @@ type Message struct {
 	Method               string          // 请求方法
 	_IOReader            HandlerFunc
 	_IOWriter            HandlerFunc
-	ResponseError        error   // 记录返回错误
-	responseBusinessCode *string // 业务码，用于区分成功或失败，"0"表示成功，"1"表示失败,需要区分没设置，还是设置""等场景
-	//requestMessage       *Message // 请求消息，用于在中间件中获取原始请求参数
+	ResponseError        error    // 记录返回错误
+	responseBusinessCode *string  // 业务码，用于区分成功或失败，"0"表示成功，"1"表示失败,需要区分没设置，还是设置""等场景
+	requestMessage       *Message // 请求消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
 }
 
 func (m *Message) SetBusinessCode(businessCode string) {
@@ -105,6 +105,15 @@ func (m *Message) SetBusinessCode(businessCode string) {
 		return
 	}
 	m.responseBusinessCode = &businessCode
+}
+
+func (m *Message) SetRequestMessage(requestMsg *Message) *Message {
+	m.requestMessage = requestMsg
+	return m
+}
+
+func (m *Message) GetRequestMessage() *Message {
+	return m.requestMessage
 }
 
 //	func (m *Message) GetRequestMessage() *Message {

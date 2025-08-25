@@ -172,10 +172,14 @@ func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
 	return nil
 }
 func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
-	requestMessage := serverprotocol.ContextGetReqeustMessage(message.Context)
+	requestMessage := message.GetRequestMessage()
+	if requestMessage == nil {
+		err = errors.New("请求上下文丢失")
+		return err
+	}
 	request, ok := requestMessage.GoStructRef.(*Request)
 	if !ok {
-		err = errors.New("请求上下文丢失")
+		err = errors.New("请求上下文类型不正确")
 		return err
 	}
 	respone := &Response{

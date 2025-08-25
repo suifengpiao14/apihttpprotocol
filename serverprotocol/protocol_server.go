@@ -23,7 +23,7 @@ func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotoc
 		},
 		response: &apihttpprotocol.Message{},
 	}
-	p.response.Context = context.WithValue(p.request.Context, ContextReqeustMessageKey, p.request)
+	p.response.SetRequestMessage(p.request)
 	p.withReadIoFn(readFn).withWriteIoFn(writeFn)
 	return p
 }
@@ -92,12 +92,6 @@ func (c *ServerProtocol) SetResponseHeader(key string, value string) *ServerProt
 }
 
 type ContextReqeustMessageKeyType string
-
-var ContextReqeustMessageKey ContextReqeustMessageKeyType = "ContextReqeustMessage"
-
-func ContextGetReqeustMessage(ctx context.Context) *apihttpprotocol.Message {
-	return ctx.Value(ContextReqeustMessageKey).(*apihttpprotocol.Message)
-}
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
 
