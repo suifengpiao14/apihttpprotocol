@@ -26,22 +26,24 @@ type ServerProtocol struct {
 
 func NewProtocolv2(c *gin.Context) *ServerProtocol {
 	p := &ServerProtocol{
-		ServerProtocol: *serverprotocol.NewGinSerivceProtocol(c),
+		ServerProtocol: *serverprotocol.NewServerProtocol().WithIOFn(serverprotocol.NewGinReadWriteMiddleware(c)),
 	}
-	p.AddRequestMiddleware(ValidateHeaderMiddle, ProtocolV2ReqeustMiddle).AddResponseMiddleware(ProtocolV2ResponseMiddle)
+	p.Apply(ValidateHeaderMiddle, ProtocolV2ReqeustMiddle)
+
+	p.ApplyResponseMiddleware(ProtocolV2ResponseMiddle)
 	return p
 }
 
 //启用验证入参中间件
 
 func (s ServerProtocol) WithValidate() ServerProtocol {
-	s.AddRequestMiddleware(ValidateRequestMiddle)
+	s.ApplyRequestMiddleware(ValidateRequestMiddle)
 	return s
 }
 
 // 启用验证签名中间件
 func (s ServerProtocol) WithCheckSignature() ServerProtocol {
-	s.AddRequestMiddleware(CheckRequestSignatureMiddle(""))
+	s.ApplyRequestMiddleware(CheckRequestSignatureMiddle(""))
 	return s
 }
 
@@ -160,17 +162,20 @@ func (cs CallerServices) GetCallerService(callerId string) (callerService *Calle
 	return callerService, nil
 }
 
-func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
-	requestParam := &Request{
-		Param: message.GoStructRef,
-	}
-	message.GoStructRef = requestParam
-	err = message.Next()
-	if err != nil {
-		return err
-	}
-	return nil
+var ProtocolV2ReqeustMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
+	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+		requestParam := &Request{
+			Param: message.GoStructRef,
+		}
+		message.GoStructRef = requestParam
+		err = message.Next()
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 }
+
 func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
 	requestMessage := message.GetRequestMessage()
 	if requestMessage == nil {
@@ -215,25 +220,28 @@ func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
 	return nil
 }
 
-// ValidateHeaderMiddle 验证头部传参，但是不验证签名
-func ValidateHeaderMiddle(message *apihttpprotocol.Message) (err error) {
-	err = message.Next()
-	if err != nil {
-		return err
-	}
-	callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
-	if callerId == "" {
-		err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
-		return err
-	}
+var ValidateHeaderMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
+	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+		err = message.Next()
+		if err != nil {
+			return err
+		}
+		callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
+		if callerId == "" {
+			err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
+			return err
+		}
 
-	inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
-	if inputSign == "" {
-		err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
-		return err
-	}
-	return nil
+		inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
+		if inputSign == "" {
+			err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
+			return err
+		}
+		return nil
+	})
 }
+
+// ValidateHeaderMiddle 验证头部传参，但是不验证签名
 
 func CheckRequestSignatureMiddle(callerKey string) func(message *apihttpprotocol.Message) (err error) {
 	return func(message *apihttpprotocol.Message) (err error) {

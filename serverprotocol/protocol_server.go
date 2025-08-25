@@ -16,7 +16,7 @@ type ServerProtocol struct {
 	response *apihttpprotocol.Message
 }
 
-func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ServerProtocol {
+func NewServerProtocol() *ServerProtocol {
 	p := &ServerProtocol{
 		request: &apihttpprotocol.Message{
 			Context: context.Background(),
@@ -24,25 +24,38 @@ func NewServerProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotoc
 		response: &apihttpprotocol.Message{},
 	}
 	p.response.SetRequestMessage(p.request)
-	p.withReadIoFn(readFn).withWriteIoFn(writeFn)
 	return p
 }
 
-func (p *ServerProtocol) withWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.response.SetIOWriter(ioFn)
+func (p *ServerProtocol) WithIOFn(reder, writer apihttpprotocol.HandlerFunc) *ServerProtocol {
+	p.request.SetIOReader(reder)
+	p.response.SetIOWriter(writer)
 	return p
 }
 
-func (p *ServerProtocol) withReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.request.SetIOReader(ioFn)
+type Option interface {
+	Apply(p *ServerProtocol) *ServerProtocol
+}
+
+type OptionFunc func(p *ServerProtocol) *ServerProtocol
+
+func (f OptionFunc) Apply(p *ServerProtocol) *ServerProtocol {
+	return f(p)
+}
+
+func (p *ServerProtocol) Apply(options ...Option) *ServerProtocol {
+	for _, option := range options {
+		p = option.Apply(p)
+	}
 	return p
 }
-func (p *ServerProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
+
+func (p *ServerProtocol) ApplyRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.request.AddMiddleware(middlewares...)
 	return p
 }
 
-func (p *ServerProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
+func (p *ServerProtocol) ApplyResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
 	p.response.AddMiddleware(middlewares...)
 	return p
 }
@@ -95,8 +108,8 @@ type ContextReqeustMessageKeyType string
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
 
-func NewGinSerivceProtocol(c *gin.Context) *ServerProtocol {
-	readFn := func(message *apihttpprotocol.Message) (err error) {
+func NewGinReadWriteMiddleware(c *gin.Context) (readFn, writeFn apihttpprotocol.HandlerFunc) {
+	readFn = func(message *apihttpprotocol.Message) (err error) {
 		ioReader := c.Request.Body
 		b, err := io.ReadAll(ioReader)
 		if err != nil {
@@ -111,12 +124,29 @@ func NewGinSerivceProtocol(c *gin.Context) *ServerProtocol {
 		err = json.Unmarshal(b, &message.GoStructRef)
 		return err
 	}
-	writeFn := func(message *apihttpprotocol.Message) (err error) {
+	writeFn = func(message *apihttpprotocol.Message) (err error) {
 		c.JSON(http.StatusOK, message.GoStructRef)
 		return nil
 	}
-	protocol := NewServerProtocol(readFn, writeFn)
-	return protocol
+	return readFn, writeFn
+}
+
+func NewGinHander[I, O any](proto ServerProtocol, handler func(in I) (out O, err error)) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		proto.WithIOFn(NewGinReadWriteMiddleware(c))
+		var in I
+		err := proto.ReadRequest(&in)
+		if err != nil {
+			proto.ResponseFail(err)
+			return
+		}
+		out, err := handler(in)
+		if err != nil {
+			proto.ResponseFail(err)
+			return
+		}
+		proto.ResponseSuccess(out)
+	}
 }
 
 type Response struct {

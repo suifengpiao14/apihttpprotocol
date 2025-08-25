@@ -50,12 +50,29 @@ func (c *ClientProtocol) GetHttpCode() int {
 	return httpCode
 }
 
-func (c *ClientProtocol) AddRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
+type Option interface {
+	Apply(p *ClientProtocol) *ClientProtocol
+}
+
+type OptionFunc func(p *ClientProtocol) *ClientProtocol
+
+func (f OptionFunc) Apply(p *ClientProtocol) *ClientProtocol {
+	return f(p)
+}
+
+func (p *ClientProtocol) Apply(options ...Option) *ClientProtocol {
+	for _, option := range options {
+		p = option.Apply(p)
+	}
+	return p
+}
+
+func (c *ClientProtocol) ApplyRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
 	c.request.AddMiddleware(middlewares...)
 	return c
 }
 
-func (c *ClientProtocol) AddResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
+func (c *ClientProtocol) ApplyResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
 	c.response.AddMiddleware(middlewares...)
 	return c
 }
