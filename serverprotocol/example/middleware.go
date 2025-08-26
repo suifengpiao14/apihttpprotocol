@@ -18,7 +18,7 @@ import (
 // ValidateHeaderMiddle 验证头部传参，但是不验证签名
 
 var ValidateHeaderMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
 		err = message.Next()
 		if err != nil {
 			return err
@@ -36,6 +36,7 @@ var ValidateHeaderMiddle serverprotocol.OptionFunc = func(p *serverprotocol.Serv
 		}
 		return nil
 	})
+	return p
 }
 
 type CallerService struct {
@@ -62,7 +63,7 @@ var CallerServicesPool = CallerServices{} // 启用签名时，需要配置Calle
 
 // 签名算法
 var CheckRequestSignatureMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
 		err = message.Next()
 		if err != nil {
 			return err
@@ -90,6 +91,7 @@ var CheckRequestSignatureMiddle serverprotocol.OptionFunc = func(p *serverprotoc
 		}
 		return nil
 	})
+	return p
 }
 
 // 返回json真实名
@@ -104,7 +106,7 @@ func getStructJsonTag(fld reflect.StructField) string {
 }
 
 var ValidateRequestMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
 		err = message.Next() //读取数据后
 		if err != nil {
 			return err
@@ -128,6 +130,7 @@ var ValidateRequestMiddle serverprotocol.OptionFunc = func(p *serverprotocol.Ser
 		}
 		return nil
 	})
+	return p
 }
 
 const (

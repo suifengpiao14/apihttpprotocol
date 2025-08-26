@@ -110,7 +110,7 @@ type Data struct {
 }
 
 var ProtocolV2ReqeustMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	return p.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) (err error) {
+	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
 		requestParam := &Request{
 			Param: message.GoStructRef,
 		}
@@ -121,10 +121,11 @@ var ProtocolV2ReqeustMiddle serverprotocol.OptionFunc = func(p *serverprotocol.S
 		}
 		return nil
 	})
+	return p
 }
 
 var ProtocolV2ResponseMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	return p.ApplyResponseMiddleware(func(message *apihttpprotocol.Message) (err error) {
+	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
 		requestMessage := message.GetRequestMessage()
 		if requestMessage == nil {
 			err = errors.New("请求上下文丢失")
@@ -169,4 +170,5 @@ var ProtocolV2ResponseMiddle serverprotocol.OptionFunc = func(p *serverprotocol.
 		}
 		return nil
 	})
+	return p
 }
