@@ -51,7 +51,19 @@ func (p *ClientProtocol) Response() *apihttpprotocol.Message {
 	return p.response
 }
 
-func (c *ClientProtocol) WriteRequest(data any) (err error) {
+func (c *ClientProtocol) Do(requestData any, resp any) (err error) {
+	err = c._WriteRequest(requestData)
+	if err != nil {
+		return err
+	}
+	err = c._ReadResponse(resp)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ClientProtocol) _WriteRequest(data any) (err error) {
 	c.request.GoStructRef = data
 	c.request.MiddlewareFuncs.Add(c.request.GetIOWriter())
 	err = c.request.Run()
@@ -60,7 +72,7 @@ func (c *ClientProtocol) WriteRequest(data any) (err error) {
 	}
 	return nil
 }
-func (c *ClientProtocol) ReadResponse(dst any) (err error) {
+func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
 	c.response.GoStructRef = dst
 	c.response.MiddlewareFuncs.Add(c.response.GetIOReader())
 	err = c.response.Run()
@@ -93,17 +105,24 @@ func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
 }
 
 var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
-	client := resty.New()
-	// 通用配置
-	client.
-		SetTimeout(10 * time.Second).
-		SetRetryCount(2).
-		SetRetryWaitTime(2 * time.Second).
-		SetRetryMaxWaitTime(10 * time.Second)
+	return RestyClientWithSignalClose(nil)
+})
 
-	// 可选：设置全局 Header
-	//client.SetHeader("User-Agent", "MyApp/1.0")
-	client.EnableGenerateCurlCmd()
+// RestyClientWithSignalClose 信号关闭客户端连接,防止泄露资源
+func RestyClientWithSignalClose(client *resty.Client) *resty.Client {
+	if client == nil {
+		client := resty.New()
+		// 通用配置
+		client.
+			SetTimeout(10 * time.Second).
+			SetRetryCount(2).
+			SetRetryWaitTime(2 * time.Second).
+			SetRetryMaxWaitTime(10 * time.Second)
+
+		// 可选：设置全局 Header
+		//client.SetHeader("User-Agent", "MyApp/1.0")
+		client.EnableGenerateCurlCmd()
+	}
 	go func() {
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
@@ -115,7 +134,7 @@ var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
 	}()
 	return client
 
-})
+}
 
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()

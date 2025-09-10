@@ -125,22 +125,10 @@ func NewProtocol2Client() *clientprotocol.ClientProtocol {
 	return p
 }
 
-func (p Protocol2Client) WriteRequest(param any) (err error) {
+func (p Protocol2Client) Do(param any, rsp any) (err error) {
 	p.RequestParam.Param = param
-	err = p.Protocol.WriteRequest(p.RequestParam)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (p Protocol2Client) ReadResponse(dst ResponseI) (err error) {
-	p.ResponseParam.Data.Data = dst
-	err = p.Protocol.ReadResponse(p.ResponseParam)
-	if err != nil {
-		return err
-	}
-	err = dst.Error()
+	p.ResponseParam.Data.Data = rsp
+	err = p.Protocol.Do(p.RequestParam, p.ResponseParam)
 	if err != nil {
 		return err
 	}
