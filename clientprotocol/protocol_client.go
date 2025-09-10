@@ -149,12 +149,15 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 			return err
 		}
 		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, response.StatusCode())
-		b := response.Bytes()
-		err = json.Unmarshal(b, message.GoStructRef)
-		if err != nil {
-			return err
+		if message.GoStructRef != nil {
+			b := response.Bytes()
+			if len(b) > 0 {
+				err = json.Unmarshal(b, message.GoStructRef)
+				if err != nil {
+					return err
+				}
+			}
 		}
-
 		err = message.Next()
 		if err != nil {
 			return err
