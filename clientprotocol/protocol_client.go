@@ -111,7 +111,7 @@ var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
 // RestyClientWithSignalClose 信号关闭客户端连接,防止泄露资源
 func RestyClientWithSignalClose(client *resty.Client) *resty.Client {
 	if client == nil {
-		client := resty.New()
+		client = resty.New()
 		// 通用配置
 		client.
 			SetTimeout(10 * time.Second).
