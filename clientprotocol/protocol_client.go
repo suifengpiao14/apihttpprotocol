@@ -1,8 +1,8 @@
 package clientprotocol
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -16,14 +16,39 @@ import (
 )
 
 type ClientProtocol struct {
-	request  apihttpprotocol.Message
-	response apihttpprotocol.Message
+	request  *apihttpprotocol.Message
+	response *apihttpprotocol.Message
 }
 
-func NewClitentProtocol(readFn apihttpprotocol.HandlerFunc, writeFn apihttpprotocol.HandlerFunc) *ClientProtocol {
-	p := &ClientProtocol{}
-	p = p.withReadIoFn(readFn).withWriteIoFn(writeFn)
+func NewClitentProtocol() *ClientProtocol {
+	p := &ClientProtocol{
+		request: &apihttpprotocol.Message{
+			Context: context.Background(),
+		},
+		response: &apihttpprotocol.Message{},
+	}
+	p.response.SetRequestMessage(p.request)
 	return p
+}
+
+func (p *ClientProtocol) WithIOFn(reder, writer apihttpprotocol.HandlerFunc) *ClientProtocol {
+	p.request.SetIOWriter(writer)
+	p.response.SetIOReader(reder)
+	return p
+}
+
+func (p *ClientProtocol) SetLog(log apihttpprotocol.LogI) *ClientProtocol {
+	p.request.SetLog(log)
+	p.response.SetLog(log)
+	return p
+}
+
+func (p *ClientProtocol) Request() *apihttpprotocol.Message {
+	return p.request
+}
+
+func (p *ClientProtocol) Response() *apihttpprotocol.Message {
+	return p.response
 }
 
 func (c *ClientProtocol) WriteRequest(data any) (err error) {
@@ -50,15 +75,9 @@ func (c *ClientProtocol) GetHttpCode() int {
 	return httpCode
 }
 
-type Option interface {
-	Apply(p *ClientProtocol) *ClientProtocol
-}
+type Option = apihttpprotocol.Option[ClientProtocol]
 
-type OptionFunc func(p *ClientProtocol) *ClientProtocol
-
-func (f OptionFunc) Apply(p *ClientProtocol) *ClientProtocol {
-	return f(p)
-}
+type OptionFunc = apihttpprotocol.OptionFunc[ClientProtocol]
 
 func (p *ClientProtocol) Apply(options ...Option) *ClientProtocol {
 	for _, option := range options {
@@ -67,28 +86,9 @@ func (p *ClientProtocol) Apply(options ...Option) *ClientProtocol {
 	return p
 }
 
-func (c *ClientProtocol) ApplyRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.request.AddMiddleware(middlewares...)
-	return c
-}
-
-func (c *ClientProtocol) ApplyResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.response.AddMiddleware(middlewares...)
-	return c
-}
-
 func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
 	c.request.SetHeader(key, value)
 
-	return c
-}
-func (c *ClientProtocol) withWriteIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.request.SetIOWriter(ioFn)
-	return c
-}
-
-func (c *ClientProtocol) withReadIoFn(ioFn apihttpprotocol.HandlerFunc) *ClientProtocol {
-	c.response.SetIOReader(ioFn)
 	return c
 }
 
@@ -122,7 +122,9 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req = req.SetMethod(method).SetURL(url) //部分接口不需要设置请求体,不会执行writeFn,又因为输出请求日志在readFn前,必须设置好,请求方法和地址,所以就在外部设置好
 	readFn := func(message *apihttpprotocol.Message) (err error) {
 		curl := req.CurlCmd() //curl依赖 req 变量,所以不独立成middle
-		fmt.Println(curl)     // 打印curl命令
+		if curl != "" {
+			message.GetLog().Info(curl)
+		}
 		response, err := req.Send()
 		if err != nil {
 			return err
@@ -146,7 +148,7 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		req.SetBody(message.GoStructRef)
 		return nil
 	}
-	clientProtocol := NewClitentProtocol(readFn, writeFn)
+	clientProtocol := NewClitentProtocol().WithIOFn(readFn, writeFn)
 	return clientProtocol
 }
 

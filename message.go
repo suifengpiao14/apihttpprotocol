@@ -98,6 +98,7 @@ type Message struct {
 	ResponseError        error    // 记录返回错误
 	responseBusinessCode *string  // 业务码，用于区分成功或失败，"0"表示成功，"1"表示失败,需要区分没设置，还是设置""等场景
 	requestMessage       *Message // 请求消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
+	log                  LogI
 }
 
 func (m *Message) SetBusinessCode(businessCode string) {
@@ -105,6 +106,17 @@ func (m *Message) SetBusinessCode(businessCode string) {
 		return
 	}
 	m.responseBusinessCode = &businessCode
+}
+
+func (m *Message) SetLog(log LogI) *Message {
+	m.log = log
+	return m
+}
+func (m *Message) GetLog() (l LogI) {
+	if m.log == nil {
+		m.log = &defaultLog{}
+	}
+	return m.log
 }
 
 func (m *Message) SetRequestMessage(requestMsg *Message) *Message {
@@ -233,4 +245,38 @@ type HttpError struct {
 func (e HttpError) Error() string {
 	b, _ := json.Marshal(e)
 	return string(b)
+}
+
+type Option[Protocol any] interface {
+	Apply(p *Protocol) *Protocol
+}
+
+type OptionFunc[Protocol any] func(p *Protocol) *Protocol
+
+func (f OptionFunc[Protocol]) Apply(p *Protocol) *Protocol {
+	return f(p)
+}
+
+type LogI interface {
+	Debug(v ...any)
+	Info(v ...any)
+	Warn(v ...any)
+	Error(v ...any)
+}
+
+type defaultLog struct {
+}
+
+func (l *defaultLog) Debug(v ...any) {
+	fmt.Println(v...)
+}
+func (l *defaultLog) Info(v ...any) {
+	fmt.Println(v...)
+}
+
+func (l *defaultLog) Warn(v ...any) {
+	fmt.Println(v...)
+}
+func (l *defaultLog) Error(v ...any) {
+	fmt.Println(v...)
 }

@@ -40,16 +40,15 @@ func (p *ServerProtocol) Request() *apihttpprotocol.Message {
 func (p *ServerProtocol) Response() *apihttpprotocol.Message {
 	return p.response
 }
-
-type Option interface {
-	Apply(p *ServerProtocol) *ServerProtocol
+func (p *ServerProtocol) SetLog(log apihttpprotocol.LogI) *ServerProtocol {
+	p.request.SetLog(log)
+	p.response.SetLog(log)
+	return p
 }
 
-type OptionFunc func(p *ServerProtocol) *ServerProtocol
+type Option = apihttpprotocol.Option[ServerProtocol]
 
-func (f OptionFunc) Apply(p *ServerProtocol) *ServerProtocol {
-	return f(p)
-}
+type OptionFunc = apihttpprotocol.OptionFunc[ServerProtocol]
 
 func (p *ServerProtocol) Apply(options ...Option) *ServerProtocol {
 	for _, option := range options {

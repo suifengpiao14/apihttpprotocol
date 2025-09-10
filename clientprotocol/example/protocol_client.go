@@ -153,7 +153,7 @@ const (
 )
 
 func (p *Protocol2Client) UseSignature() *Protocol2Client {
-	p.Protocol.ApplyRequestMiddleware(func(message *apihttpprotocol.Message) error {
+	p.Protocol.Request().AddMiddleware(func(message *apihttpprotocol.Message) error {
 		sign := apiSign(p.RequestParam.String(), p.callerService.CallerServiceKey)
 		p.Protocol.SetHeader(Http_header_HSB_OPENAPI_SIGNATURE, sign)
 		return nil
