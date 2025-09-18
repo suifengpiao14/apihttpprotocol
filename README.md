@@ -16,7 +16,7 @@
     "pageSize" : "10",
     "pageIndex" : "0",
     "orderId":"12",
-    "login_token" : "76861242753537bcb4b3ccd3a19442b7::7686::1::242::75"
+    "login_token" : "::765"
 }
 ```
 2. 响应体必须是json格式，并以application/json 方式传输
@@ -59,7 +59,7 @@
         "_remark": "",
         "_version": "0.01",
         "_timestamps": "1602488688",
-        "_invokeId": "HsbYouPinMallAdminAgent16024886882750",
+        "_invokeId": "",
         "_callerServiceId": "110026",
         "_groupNo": "1"
     },
@@ -84,7 +84,7 @@
         "_remark": "",
         "_version": "0.01",
         "_timestamps": "1602488688",
-        "_invokeId": "HsbYouPinMallAdminAgent16024886882750",
+        "_invokeId": "",
         "_callerServiceId": "110026",
         "_groupNo": "1"
     },
@@ -105,7 +105,7 @@
         "_remark": "",
         "_version": "0.01",
         "_timestamps": "1602488688",
-        "_invokeId": "HsbYouPinMallAdminAgent16024886882750",
+        "_invokeId": "",
         "_callerServiceId": "110026",
         "_groupNo": "1"
     },
@@ -128,7 +128,7 @@
         "_remark": "",
         "_version": "0.01",
         "_timestamps": "1602488688",
-        "_invokeId": "HsbYouPinMallAdminAgent16024886882750",
+        "_invokeId": "",
         "_callerServiceId": "110026",
         "_groupNo": "1"
     },
