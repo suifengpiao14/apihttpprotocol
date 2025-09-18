@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
 	"resty.dev/v3"
@@ -148,11 +150,16 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		if err != nil {
 			return err
 		}
-		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, response.StatusCode())
+		body := response.Bytes()
+		httpCode := response.StatusCode()
+		if httpCode != http.StatusOK {
+			err = errors.Errorf("http code:%d,response body:%s", httpCode, string(body))
+			return err
+		}
+		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, httpCode)
 		if message.GoStructRef != nil {
-			b := response.Bytes()
-			if len(b) > 0 {
-				err = json.Unmarshal(b, message.GoStructRef)
+			if len(body) > 0 {
+				err = json.Unmarshal(body, message.GoStructRef)
 				if err != nil {
 					return err
 				}
