@@ -11,8 +11,8 @@ import (
 	"github.com/go-playground/validator/v10"
 	translations "github.com/go-playground/validator/v10/translations/zh"
 	"github.com/pkg/errors"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol/serverprotocol"
+	"github.com/suifengpiao14/apihttpprotocol"
+	"github.com/suifengpiao14/apihttpprotocol/serverprotocol"
 )
 
 // ValidateHeaderMiddle 验证头部传参，但是不验证签名

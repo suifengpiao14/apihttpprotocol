@@ -1,4 +1,4 @@
-module gitlab.huishoubao.com/gopackage/apihttpprotocol
+module github.com/suifengpiao14/apihttpprotocol
 
 go 1.22
 

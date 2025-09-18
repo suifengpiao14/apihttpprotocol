@@ -7,8 +7,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol/clientprotocol"
+	"github.com/suifengpiao14/apihttpprotocol"
+	"github.com/suifengpiao14/apihttpprotocol/clientprotocol"
 )
 
 /*

@@ -13,7 +13,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
+	"github.com/suifengpiao14/apihttpprotocol"
 	"resty.dev/v3"
 )
 

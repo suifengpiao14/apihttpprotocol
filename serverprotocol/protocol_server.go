@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cast"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
+	"github.com/suifengpiao14/apihttpprotocol"
 )
 
 type ServerProtocol struct {

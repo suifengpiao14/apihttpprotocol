@@ -9,8 +9,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
 
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol"
-	"gitlab.huishoubao.com/gopackage/apihttpprotocol/serverprotocol"
+	"github.com/suifengpiao14/apihttpprotocol"
+	"github.com/suifengpiao14/apihttpprotocol/serverprotocol"
 )
 
 func NewProtocolv2(c *gin.Context) *serverprotocol.ServerProtocol {
