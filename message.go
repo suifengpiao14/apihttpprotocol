@@ -289,6 +289,9 @@ func (m *Message[T]) Run() (err error) {
 
 type MiddlewareFuncs[T any] []HandlerFunc[T]
 
+type MiddlewareFuncsRequestMessage = MiddlewareFuncs[RequestMessage]
+type MiddlewareFuncsResponseMessage = MiddlewareFuncs[ResponseMessage]
+
 func (ms *MiddlewareFuncs[T]) Add(fns ...HandlerFunc[T]) *MiddlewareFuncs[T] {
 	if *ms == nil {
 		*ms = MiddlewareFuncs[T]{}

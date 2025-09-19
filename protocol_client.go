@@ -1,13 +1,12 @@
 package apihttpprotocol
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
-	"log"
+	"io"
 	"net/http"
-	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/pkg/errors"
@@ -88,36 +87,27 @@ func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
 	return c
 }
 
-var restyClientFn func() *resty.Client = sync.OnceValue(func() *resty.Client {
-	return RestyClientWithSignalClose(nil)
+var sharedTransport = &http.Transport{
+	MaxIdleConns:        2000,
+	MaxIdleConnsPerHost: 1000,
+	IdleConnTimeout:     90 * time.Second,
+}
+var NewRestyClient = sync.OnceValue(func() (client *resty.Client) {
+
+	client = resty.New()
+	// 通用配置
+	client.
+		SetTimeout(10 * time.Second).
+		SetRetryCount(2).
+		SetRetryWaitTime(2 * time.Second).
+		SetRetryMaxWaitTime(10 * time.Second)
+	client = client.SetTransport(sharedTransport) // 设置共享的传输层,确保连接池可以被复用
+	return client
 })
 
-// RestyClientWithSignalClose 信号关闭客户端连接,防止泄露资源
-func RestyClientWithSignalClose(client *resty.Client) *resty.Client {
-	if client == nil {
-		client = resty.New()
-		// 通用配置
-		client.
-			SetTimeout(10 * time.Second).
-			SetRetryCount(2).
-			SetRetryWaitTime(2 * time.Second).
-			SetRetryMaxWaitTime(10 * time.Second)
-
-		// 可选：设置全局 Header
-		//client.SetHeader("User-Agent", "MyApp/1.0")
-		//client.EnableGenerateCurlCmd()
-	}
-	go func() {
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-		sig := <-c
-		log.Printf("[resty.dev/v3] received signal: %s, closing curl connections...", sig)
-		client.Close()
-		signal.Stop(c)
-
-	}()
-	return client
-
+func GetRestyClient() *resty.Client {
+	ctx := context.Background()
+	return NewRestyClient().Clone(ctx)
 }
 
 const (
@@ -125,8 +115,8 @@ const (
 )
 
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
-	req := restyClientFn().R()
-	req = req.SetMethod(method).SetURL(url) //部分接口不需要设置请求体,不会执行writeFn,又因为输出请求日志在readFn前,必须设置好,请求方法和地址,所以就在外部设置好
+	client := GetRestyClient()
+	var req *resty.Request
 	readFn := func(message *ResponseMessage) (err error) {
 		response, err := req.Send()
 		if err != nil {
@@ -160,9 +150,31 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	}
 	writeFn := func(message *RequestMessage) (err error) {
-		req.SetHeaderMultiValues(message.Headers)
-		req.SetBody(message.GoStructRef)
-		err = message.SetDuplicateRequest(req.RawRequest)
+		var buf *bytes.Buffer
+		var httpReq *http.Request
+		if message.GoStructRef != nil {
+			b, err := json.Marshal(message.GoStructRef)
+			if err != nil {
+				return err
+			}
+			buf = bytes.NewBuffer(b)
+			httpReq, err = http.NewRequest(method, url, buf)
+			if err != nil {
+				return err
+			}
+		} else {
+			httpReq, err = http.NewRequest(method, url, nil)
+			if err != nil {
+				return err
+			}
+		}
+		httpReq.Header = message.Headers
+
+		req, err = HTTPRequestToResty(client, httpReq)
+		if err != nil {
+			return err
+		}
+		err = message.SetDuplicateRequest(httpReq) // resty.Request 在req.Send()之前，取不到req.Request 值，这里暂时先构造
 		if err != nil {
 			return err
 		}
@@ -186,4 +198,28 @@ func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
 		return err
 	}
 	return nil
+}
+
+// HTTPRequestToResty 将已有的 *http.Request 转换成 *resty.Request
+func HTTPRequestToResty(client *resty.Client, req *http.Request) (*resty.Request, error) {
+	r := client.R()
+	// 设置 Method 和 URL
+	r.SetMethod(req.Method)
+	r.SetURL(req.URL.String())
+	r.SetHeaderMultiValues(req.Header)
+	bodyReadCloser := req.Body
+	// 设置 Body
+	if bodyReadCloser != nil {
+		defer bodyReadCloser.Close()
+		body, err := io.ReadAll(bodyReadCloser)
+		if err != nil {
+			return nil, err
+		}
+		r.SetBody(body)
+		// 重置原 request Body，防止后续重复读取失败
+		req.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	r = r.SetCookies(req.Cookies())
+	return r, nil
 }
