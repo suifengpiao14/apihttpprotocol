@@ -21,7 +21,7 @@ func deepCopyHeader(h http.Header) http.Header {
 }
 
 // CopyRequest 深拷贝 http.Request，Body 可重复读取
-func CopyRequest(r *http.Request) (*http.Request, error) {
+func CopyRequest(r *http.Request) (copyRequest *http.Request, err error) {
 	var bodyCopy io.ReadCloser
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
@@ -44,7 +44,7 @@ func CopyRequest(r *http.Request) (*http.Request, error) {
 }
 
 // CopyResponse 深拷贝 http.Response，Body 可重复读取
-func CopyResponse(resp *http.Response) (*http.Response, error) {
+func CopyResponse(resp *http.Response) (copyResponse *http.Response, err error) {
 	var bodyCopy io.ReadCloser
 	body := resp.Body
 	if body != nil {
@@ -60,6 +60,10 @@ func CopyResponse(resp *http.Response) (*http.Response, error) {
 	}
 
 	respCopy := *resp // 浅拷贝结构体
+	respCopy.Request, err = CopyRequest(resp.Request)
+	if err != nil {
+		return nil, err
+	}
 	respCopy.Body = bodyCopy
 	respCopy.Header = deepCopyHeader(resp.Header)
 	respCopy.Trailer = deepCopyHeader(resp.Trailer)

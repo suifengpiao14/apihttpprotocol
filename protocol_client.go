@@ -1,7 +1,6 @@
-package clientprotocol
+package apihttpprotocol
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -13,43 +12,37 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cast"
-	"github.com/suifengpiao14/apihttpprotocol"
 	"resty.dev/v3"
 )
 
 type ClientProtocol struct {
-	request  *apihttpprotocol.Message
-	response *apihttpprotocol.Message
+	_Protocol
 }
 
 func NewClitentProtocol() *ClientProtocol {
 	p := &ClientProtocol{
-		request: &apihttpprotocol.Message{
-			Context: context.Background(),
-		},
-		response: &apihttpprotocol.Message{},
+		_Protocol: newProtocol(),
 	}
-	p.response.SetRequestMessage(p.request)
 	return p
 }
 
-func (p *ClientProtocol) WithIOFn(reder, writer apihttpprotocol.HandlerFunc) *ClientProtocol {
+func (p *ClientProtocol) WithIOFn(reder HandlerFunc[ResponseMessage], writer HandlerFunc[RequestMessage]) *ClientProtocol {
 	p.request.SetIOWriter(writer)
 	p.response.SetIOReader(reder)
 	return p
 }
 
-func (p *ClientProtocol) SetLog(log apihttpprotocol.LogI) *ClientProtocol {
+func (p *ClientProtocol) SetLog(log LogI) *ClientProtocol {
 	p.request.SetLog(log)
 	p.response.SetLog(log)
 	return p
 }
 
-func (p *ClientProtocol) Request() *apihttpprotocol.Message {
+func (p *ClientProtocol) Request() *RequestMessage {
 	return p.request
 }
 
-func (p *ClientProtocol) Response() *apihttpprotocol.Message {
+func (p *ClientProtocol) Response() *ResponseMessage {
 	return p.response
 }
 
@@ -85,7 +78,7 @@ func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
 }
 
 func (c *ClientProtocol) GetHttpCode() int {
-	httpCode := cast.ToInt(c.response.Metadata.GetWithDefault(apihttpprotocol.MetaData_HttpCode, 0))
+	httpCode := cast.ToInt(c.response.Metadata.GetWithDefault(MetaData_HttpCode, 0))
 	return httpCode
 }
 
@@ -112,7 +105,7 @@ func RestyClientWithSignalClose(client *resty.Client) *resty.Client {
 
 		// 可选：设置全局 Header
 		//client.SetHeader("User-Agent", "MyApp/1.0")
-		client.EnableGenerateCurlCmd()
+		//client.EnableGenerateCurlCmd()
 	}
 	go func() {
 		c := make(chan os.Signal, 1)
@@ -134,16 +127,12 @@ const (
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()
 	req = req.SetMethod(method).SetURL(url) //部分接口不需要设置请求体,不会执行writeFn,又因为输出请求日志在readFn前,必须设置好,请求方法和地址,所以就在外部设置好
-	readFn := func(message *apihttpprotocol.Message) (err error) {
-		curl := req.CurlCmd() //curl依赖 req 变量,所以不独立成middle
-		if curl != "" {
-			reqMessage, ok := message.GetRequestMessage()
-			if ok {
-				reqMessage.Metadata.Set(MetaData_CurlCmd, curl) // 发送请求日志，放到请求消息中触发，方便理解
-				reqMessage.GetLog().Info(curl)
-			}
-		}
+	readFn := func(message *ResponseMessage) (err error) {
 		response, err := req.Send()
+		if err != nil {
+			return err
+		}
+		err = message.SetDuplicateResponse(response.RawResponse)
 		if err != nil {
 			return err
 		}
@@ -154,7 +143,7 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 			err = errors.Errorf("http code:%d,response body:%s", httpCode, string(body))
 			return err
 		}
-		message.Metadata.Set(apihttpprotocol.MetaData_HttpCode, httpCode)
+		message.Metadata.Set(MetaData_HttpCode, httpCode)
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
 				err = json.Unmarshal(body, message.GoStructRef)
@@ -170,17 +159,21 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 
 		return nil
 	}
-	writeFn := func(message *apihttpprotocol.Message) (err error) {
+	writeFn := func(message *RequestMessage) (err error) {
 		req.SetHeaderMultiValues(message.Headers)
 		req.SetBody(message.GoStructRef)
+		err = message.SetDuplicateRequest(req.RawRequest)
+		if err != nil {
+			return err
+		}
 		return nil
 	}
 	clientProtocol := NewClitentProtocol().WithIOFn(readFn, writeFn)
 	return clientProtocol
 }
 
-func CodeMessageResponseMiddle(message *apihttpprotocol.Message) (err error) {
-	response := &apihttpprotocol.Response{
+func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
+	response := &Response{
 		Data: message.GoStructRef,
 	}
 	message.GoStructRef = response

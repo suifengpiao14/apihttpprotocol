@@ -45,27 +45,27 @@ func (m *Metadata) Set(key string, value any) {
 	(*m)[key] = value
 }
 
-func (m *Message) SetMetaData(key string, value any) {
+func (m *Message[T]) SetMetaData(key string, value any) {
 	m.Metadata.Set(key, value)
 }
-func (m *Message) SetHeader(key string, value string) {
+func (m *Message[T]) SetHeader(key string, value string) {
 	if m.Headers == nil {
 		m.Headers = http.Header{}
 	}
 	m.Headers.Add(key, value)
 }
 
-func (m *Message) GetHeader(key string) (value string) {
+func (m *Message[T]) GetHeader(key string) (value string) {
 	if m.Headers == nil {
 		m.Headers = http.Header{}
 	}
 	return m.Headers.Get(key)
 }
-func (m *Message) SetRequestId(requestId string) *Message {
+func (m *Message[T]) SetRequestId(requestId string) *Message[T] {
 	m.requestId = requestId
 	return m
 }
-func (m *Message) GetRequestId() (requestId string) {
+func (m *RequestMessage) GetRequestId() (requestId string) {
 	defer func() {
 		if requestId == "" {
 			requestId = "unknown" // 将空值转换为未知，便于调试追踪问题。
@@ -82,7 +82,29 @@ func (m *Message) GetRequestId() (requestId string) {
 	return requestId
 }
 
-func (m *Message) AddMiddleware(middlewares ...HandlerFunc) *Message {
+func (m *ResponseMessage) GetRequestId() (requestId string) {
+	defer func() {
+		if requestId == "" {
+			requestId = "unknown" // 将空值转换为未知，便于调试追踪问题。
+		}
+	}()
+	if m.requestId != "" {
+		return ""
+	}
+	dumpResp, ok := m.GetDuplicateResponse()
+	if !ok {
+		return ""
+	}
+	dumpReq := dumpResp.Request
+	if dumpReq != nil {
+		requestId = dumpReq.Header.Get("X-Request-Id")
+	} else {
+		requestId = dumpResp.Header.Get("X-Request-Id")
+	}
+	return requestId
+}
+
+func (m *Message[T]) AddMiddleware(middlewares ...HandlerFunc[T]) *Message[T] {
 	m.MiddlewareFuncs.Add(middlewares...)
 	return m
 }
@@ -90,42 +112,54 @@ func (m *Message) AddMiddleware(middlewares ...HandlerFunc) *Message {
 var ERRIOFnIsNil = errors.New("io function is nil")
 
 // 定义Message结构体（用户提供）
-type Message struct {
+type Message[T any] struct {
+	self    *T
 	Context context.Context
 	Headers http.Header
 	//RequestParams   map[string]string
-	raw               []byte // 原始请求或响应数据，可用于签名校验等场景
-	GoStructRef       any    // 可以用于存储请求参数或响应结果
-	Metadata          Metadata
-	MiddlewareFuncs   MiddlewareFuncs // 中间件调用链
-	index             int             // 当前执行的中间件索引，类似Gin的index
-	URL               string          // 请求URL
-	Method            string          // 请求方法
-	_IOReader         HandlerFunc
-	_IOWriter         HandlerFunc
-	ResponseError     error    // 记录返回错误
-	requestMessage    *Message // 请求消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
-	log               LogI
-	duplicateRequest  *http.Request
-	duplicateResponse *http.Response
-	requestId         string
+	raw             []byte // 原始请求或响应数据，可用于签名校验等场景
+	GoStructRef     any    // 可以用于存储请求参数或响应结果
+	Metadata        Metadata
+	MiddlewareFuncs MiddlewareFuncs[T] // 中间件调用链
+	index           int                // 当前执行的中间件索引，类似Gin的index
+
+	_IOReader HandlerFunc[T]
+	_IOWriter HandlerFunc[T]
+	log       LogI
+	requestId string
 }
 
-func (m *Message) GetDuplicateRequest() (duplicateRequest *http.Request, exists bool) {
+func (m *Message[T]) Self() *T {
+	return m.self
+}
+
+type RequestMessage struct {
+	Message[RequestMessage]
+	URL              string           // 请求URL
+	Method           string           // 请求方法
+	responseMessage  *ResponseMessage // 响应消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
+	duplicateRequest *http.Request
+}
+
+type ResponseMessage struct {
+	Message[ResponseMessage]
+	ResponseError     error           // 记录返回错误
+	requestMessage    *RequestMessage // 请求消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
+	duplicateResponse *http.Response
+}
+
+func (m *RequestMessage) GetDuplicateRequest() (duplicateRequest *http.Request, exists bool) {
 	if m.duplicateRequest == nil {
 		return nil, false
 	}
-	return m.duplicateRequest, true
-}
-
-func (m *Message) GetDuplicateResponse() (duplicateResponse *http.Response, exists bool) {
-	if m.duplicateResponse == nil {
+	duplicateRequest, err := CopyRequest(m.duplicateRequest) //复制请求，防止后续修改影响原始请求
+	if err != nil {
 		return nil, false
 	}
-	return m.duplicateResponse, true
+	return duplicateRequest, true
 }
 
-func (m *Message) SetDuplicateRequest(reqest *http.Request) (err error) {
+func (m *RequestMessage) SetDuplicateRequest(reqest *http.Request) (err error) {
 	duplicateRequest, err := CopyRequest(reqest)
 	if err != nil {
 		return err
@@ -134,7 +168,18 @@ func (m *Message) SetDuplicateRequest(reqest *http.Request) (err error) {
 	return nil
 }
 
-func (m *Message) SetDuplicateResponse(response *http.Response) (err error) {
+func (m *ResponseMessage) GetDuplicateResponse() (duplicateResponse *http.Response, exists bool) {
+	if m.duplicateResponse == nil {
+		return nil, false
+	}
+	duplicateResponse, err := CopyResponse(m.duplicateResponse)
+	if err != nil {
+		return nil, false
+	}
+	return duplicateResponse, true
+}
+
+func (m *ResponseMessage) SetDuplicateResponse(response *http.Response) (err error) {
 	duplicateResponse, err := CopyResponse(response)
 	if err != nil {
 		return err
@@ -143,55 +188,70 @@ func (m *Message) SetDuplicateResponse(response *http.Response) (err error) {
 	return nil
 }
 
-func (m *Message) SetLog(log LogI) *Message {
+func (m *Message[T]) SetLog(log LogI) *Message[T] {
 	m.log = log
 	return m
 }
-func (m *Message) GetLog() (l LogI) {
+func (m *Message[T]) GetLog() (l LogI) {
 	if m.log == nil {
 		m.log = &logDefault{}
 	}
 	return m.log
 }
 
-func (m *Message) SetRequestMessage(requestMsg *Message) *Message {
-	m.requestMessage = requestMsg
-	return m
-}
+// func (m *ResponseMessage) SetRequestMessage(requestMsg *RequestMessage) *ResponseMessage {
+// 	m.requestMessage = requestMsg
+// 	return m
+// }
 
-func (m *Message) GetRequestMessage() (*Message, bool) {
+func (m *ResponseMessage) GetRequestMessage() (*RequestMessage, bool) {
 	return m.requestMessage, m.requestMessage != nil
 }
 
-func (m *Message) SetIOReader(ioFn HandlerFunc) *Message {
+// func (m *RequestMessage) SetResponseMessage(responseMsg *ResponseMessage) *RequestMessage {
+// 	m.responseMessage = responseMsg
+// 	return m
+// }
+
+func (m *RequestMessage) GetResponseMessage() (*ResponseMessage, bool) {
+	return m.responseMessage, m.responseMessage != nil
+}
+
+func (m *Message[T]) SetIOReader(ioFn HandlerFunc[T]) *Message[T] {
 	m._IOReader = ioFn
 	return m
 }
-func (m *Message) SetRaw(b []byte) {
+
+func (m *Message[T]) SetRaw(b []byte) {
 	m.raw = b
 }
-func (m *Message) GetRaw() []byte {
+
+func (m *Message[T]) GetRaw() []byte {
+	if m.raw != nil {
+		return m.raw
+	}
+
 	return m.raw
 }
-func (m *Message) GetIOReader() (ioFn HandlerFunc) {
+func (m *Message[T]) GetIOReader() (ioFn HandlerFunc[T]) {
 	if m._IOReader == nil {
 		panic(ERRIOFnIsNil)
 	}
 	return m._IOReader
 }
 
-func (m *Message) SetIOWriter(ioFn HandlerFunc) *Message {
+func (m *Message[T]) SetIOWriter(ioFn HandlerFunc[T]) *Message[T] {
 	m._IOWriter = ioFn
 	return m
 }
-func (m *Message) GetIOWriter() (ioFn HandlerFunc) {
+func (m *Message[T]) GetIOWriter() (ioFn HandlerFunc[T]) {
 	if m._IOWriter == nil {
 		panic(ERRIOFnIsNil)
 	}
 	return m._IOWriter
 }
 
-func (m *Message) Back() *Message {
+func (m *Message[T]) Back() *Message[T] {
 	m.index--
 	return m
 }
@@ -203,14 +263,14 @@ func (m *Message) Back() *Message {
 // }
 
 // 定义中间件函数类型，与Gin的HandlerFunc对应
-type HandlerFunc func(message *Message) (err error)
+type HandlerFunc[T any] func(message *T) (err error)
 
 // Next 传递控制权给下一个中间件
 // 实现逻辑：索引+1并执行下一个中间件
-func (m *Message) Next() (err error) {
+func (m *Message[T]) Next() (err error) {
 	m.index++
 	if m.index < len(m.MiddlewareFuncs) {
-		err = m.MiddlewareFuncs[m.index](m)
+		err = m.MiddlewareFuncs[m.index](m.self)
 		if err != nil {
 			return err
 		}
@@ -218,23 +278,23 @@ func (m *Message) Next() (err error) {
 	return nil
 }
 
-func (m *Message) Run() (err error) {
+func (m *Message[T]) Run() (err error) {
 	m.index = -1
 	err = m.Next()
 	return err
 }
 
-type MiddlewareFuncs []HandlerFunc
+type MiddlewareFuncs[T any] []HandlerFunc[T]
 
-func (ms *MiddlewareFuncs) Add(fns ...HandlerFunc) *MiddlewareFuncs {
+func (ms *MiddlewareFuncs[T]) Add(fns ...HandlerFunc[T]) *MiddlewareFuncs[T] {
 	if *ms == nil {
-		*ms = MiddlewareFuncs{}
+		*ms = MiddlewareFuncs[T]{}
 	}
 	*ms = append(*ms, fns...)
 	return ms
 }
 
-func RequestMiddleLog(message *Message) (err error) {
+func RequestMiddleLog(message *RequestMessage) (err error) {
 	err = message.Next() //读取数据后
 	if err != nil {
 		return err
@@ -254,7 +314,7 @@ func RequestMiddleLog(message *Message) (err error) {
 	return nil
 }
 
-func ResponseMiddleLog(message *Message) (err error) {
+func ResponseMiddleLog(message *ResponseMessage) (err error) {
 	err = message.Next() //读取数据后
 	if err != nil {
 		return err
@@ -274,31 +334,20 @@ func ResponseMiddleLog(message *Message) (err error) {
 	return nil
 }
 
-func MiddleSetLog(log LogI) HandlerFunc {
-	return func(message *Message) (err error) {
+func RequestMiddleSetLog(log LogI) HandlerFunc[RequestMessage] {
+	return func(message *RequestMessage) (err error) {
 		message.SetLog(log)
 		err = message.Next()
 		return err
 	}
 }
 
-var ERRMiddlewareNotFound = errors.New("middleware not found")
-
-type Response struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data"`
-}
-
-func (rsp *Response) Validate() (err error) {
-	if rsp.Code != 0 {
-		if rsp.Message == "" {
-			rsp.Message = fmt.Sprintf("%v", rsp.Data)
-		}
-		err = errors.Errorf("response err code:%d,message:%s", rsp.Code, rsp.Message)
+func ResponseMiddleSetLog(log LogI) HandlerFunc[ResponseMessage] {
+	return func(message *ResponseMessage) (err error) {
+		message.SetLog(log)
+		err = message.Next()
 		return err
 	}
-	return nil
 }
 
 // 错误处理结构

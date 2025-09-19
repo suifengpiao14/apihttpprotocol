@@ -1,48 +1,31 @@
-package serverprotocol
+package apihttpprotocol
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/errors"
 	"github.com/spf13/cast"
-	"github.com/suifengpiao14/apihttpprotocol"
 )
 
 type ServerProtocol struct {
-	request  *apihttpprotocol.Message
-	response *apihttpprotocol.Message
+	_Protocol
 }
 
 func NewServerProtocol() *ServerProtocol {
-	p := &ServerProtocol{
-		request: &apihttpprotocol.Message{
-			Context: context.Background(),
-		},
-		response: &apihttpprotocol.Message{},
+	p := newProtocol()
+	sp := ServerProtocol{
+		_Protocol: p,
 	}
-	p.response.SetRequestMessage(p.request)
-	return p
+	return &sp
 }
 
-func (p *ServerProtocol) WithIOFn(reder, writer apihttpprotocol.HandlerFunc) *ServerProtocol {
-	p.request.SetIOReader(reder)
-	p.response.SetIOWriter(writer)
-	return p
-}
-
-func (p *ServerProtocol) Request() *apihttpprotocol.Message {
-	return p.request
-}
-
-func (p *ServerProtocol) Response() *apihttpprotocol.Message {
-	return p.response
-}
-func (p *ServerProtocol) SetLog(log apihttpprotocol.LogI) *ServerProtocol {
-	p.request.SetLog(log)
-	p.response.SetLog(log)
+func (p *ServerProtocol) WithIOFn(reder HandlerFunc[RequestMessage], writer HandlerFunc[ResponseMessage]) *ServerProtocol {
+	p.Request().SetIOReader(reder)
+	p.Response().SetIOWriter(writer)
 	return p
 }
 
@@ -54,9 +37,10 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 }
 
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
-	p.request.GoStructRef = dst
-	p.request.MiddlewareFuncs.Add(p.request.GetIOReader())
-	err = p.request.Run()
+	request := p.Request()
+	request.GoStructRef = dst
+	request.MiddlewareFuncs.Add(request.GetIOReader())
+	err = request.Run()
 	if err != nil {
 		return err
 	}
@@ -64,9 +48,10 @@ func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 }
 
 func (p *ServerProtocol) writeResponse(data any) (err error) {
-	p.response.GoStructRef = data
-	p.response.MiddlewareFuncs.Add(p.response.GetIOWriter())
-	err = p.response.Run()
+	response := p.Response()
+	response.GoStructRef = data
+	response.MiddlewareFuncs.Add(response.GetIOWriter())
+	err = response.Run()
 	if err != nil {
 		return err
 	}
@@ -74,7 +59,8 @@ func (p *ServerProtocol) writeResponse(data any) (err error) {
 }
 
 func (p *ServerProtocol) ResponseFail(err error) {
-	p.response.ResponseError = err
+	response := p.Response()
+	response.ResponseError = err
 	err = p.writeResponse(nil)
 	if err != nil {
 		panic(err) // 业务本身报错，在写入时还报错，直接panic ，避免循环调用
@@ -85,33 +71,37 @@ const (
 	ContentTypeJson = "application/json"
 )
 
-func (c *ServerProtocol) SetResponseHeader(key string, value string) *ServerProtocol {
-	c.response.SetHeader(key, value)
-	return c
+func (p *ServerProtocol) SetResponseHeader(key string, value string) *ServerProtocol {
+	response := p.Response()
+	response.SetHeader(key, value)
+	return p
 }
 
 type ContextReqeustMessageKeyType string
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
 
-func NewGinReadWriteMiddleware(c *gin.Context) (readFn, writeFn apihttpprotocol.HandlerFunc) {
-	readFn = func(message *apihttpprotocol.Message) (err error) {
+func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFunc[RequestMessage], writeFn HandlerFunc[ResponseMessage]) {
+	readFn = func(message *RequestMessage) (err error) {
+		err = message.SetDuplicateRequest(c.Request)
+		if err != nil {
+			return err
+		}
 		ioReader := c.Request.Body
 		b, err := io.ReadAll(ioReader)
 		if err != nil {
 			return err
 		}
 		defer c.Request.Body.Close() // 关闭请求体，防止内存泄漏
-		message.SetRaw(b)
-		//c.Request.Body = io.NopCloser(bytes.NewReader(b))
 		for k, v := range c.Request.Header {
 			message.SetHeader(k, v[0])
 		}
 		err = json.Unmarshal(b, &message.GoStructRef)
 		return err
 	}
-	writeFn = func(message *apihttpprotocol.Message) (err error) {
+	writeFn = func(message *ResponseMessage) (err error) {
 		c.JSON(http.StatusOK, message.GoStructRef)
+		message.SetDuplicateResponse(c.Request.Response)
 		return nil
 	}
 	return readFn, writeFn
@@ -147,11 +137,22 @@ type Response struct {
 	Data    any    `json:"data"`
 }
 
+func (rsp *Response) Validate() (err error) {
+	if rsp.Code != Business_Code_Success {
+		if rsp.Message == "" {
+			rsp.Message = fmt.Sprintf("%v", rsp.Data)
+		}
+		err = errors.Errorf("response err code:%s,message:%s", rsp.Code, rsp.Message)
+		return err
+	}
+	return nil
+}
+
 var (
 	BusinessCode = "businessCode"
 )
 
-func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
+func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 	response := &Response{
 		Data: message.GoStructRef,
 	}
