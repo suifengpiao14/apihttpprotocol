@@ -23,7 +23,7 @@ func NewServerProtocol() *ServerProtocol {
 	return &sp
 }
 
-func (p *ServerProtocol) WithIOFn(reder HandlerFunc[RequestMessage], writer HandlerFunc[ResponseMessage]) *ServerProtocol {
+func (p *ServerProtocol) WithIOFn(reder HandlerFuncRequestMessage, writer HandlerFuncResponseMessage) *ServerProtocol {
 	p.Request().SetIOReader(reder)
 	p.Response().SetIOWriter(writer)
 	return p
@@ -81,7 +81,7 @@ type ContextReqeustMessageKeyType string
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
 
-func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFunc[RequestMessage], writeFn HandlerFunc[ResponseMessage]) {
+func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage, writeFn HandlerFuncResponseMessage) {
 	readFn = func(message *RequestMessage) (err error) {
 		err = message.SetDuplicateRequest(c.Request)
 		if err != nil {

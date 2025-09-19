@@ -265,6 +265,9 @@ func (m *Message[T]) Back() *Message[T] {
 // 定义中间件函数类型，与Gin的HandlerFunc对应
 type HandlerFunc[T any] func(message *T) (err error)
 
+type HandlerFuncRequestMessage = HandlerFunc[RequestMessage]
+type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
+
 // Next 传递控制权给下一个中间件
 // 实现逻辑：索引+1并执行下一个中间件
 func (m *Message[T]) Next() (err error) {
@@ -334,7 +337,7 @@ func ResponseMiddleLog(message *ResponseMessage) (err error) {
 	return nil
 }
 
-func RequestMiddleSetLog(log LogI) HandlerFunc[RequestMessage] {
+func RequestMiddleSetLog(log LogI) HandlerFuncRequestMessage {
 	return func(message *RequestMessage) (err error) {
 		message.SetLog(log)
 		err = message.Next()
@@ -342,7 +345,7 @@ func RequestMiddleSetLog(log LogI) HandlerFunc[RequestMessage] {
 	}
 }
 
-func ResponseMiddleSetLog(log LogI) HandlerFunc[ResponseMessage] {
+func ResponseMiddleSetLog(log LogI) HandlerFuncResponseMessage {
 	return func(message *ResponseMessage) (err error) {
 		message.SetLog(log)
 		err = message.Next()
