@@ -274,6 +274,13 @@ func ResponseMiddleLog(message *Message) (err error) {
 	return nil
 }
 
+func MiddleSetLog(log LogI) HandlerFunc {
+	return func(message *Message) (err error) {
+		message.SetLog(log)
+		return message.Next()
+	}
+}
+
 var ERRMiddlewareNotFound = errors.New("middleware not found")
 
 type Response struct {
