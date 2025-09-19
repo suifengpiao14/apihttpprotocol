@@ -277,7 +277,8 @@ func ResponseMiddleLog(message *Message) (err error) {
 func MiddleSetLog(log LogI) HandlerFunc {
 	return func(message *Message) (err error) {
 		message.SetLog(log)
-		return message.Next()
+		err = message.Next()
+		return err
 	}
 }
 
