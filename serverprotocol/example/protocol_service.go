@@ -15,7 +15,8 @@ import (
 
 func NewProtocolv2(c *gin.Context) *serverprotocol.ServerProtocol {
 	p := serverprotocol.NewServerProtocol().WithIOFn(serverprotocol.NewGinReadWriteMiddleware(c))
-	p.Apply(ValidateHeaderMiddle, ProtocolV2ReqeustMiddle, ProtocolV2ResponseMiddle)
+	p.Request().AddMiddleware(ValidateHeaderMiddle, ProtocolV2ReqeustMiddle)
+	p.Response().AddMiddleware(ProtocolV2ResponseMiddle)
 	return p
 }
 
@@ -109,66 +110,60 @@ type Data struct {
 	Data any `json:"_data"`
 }
 
-var ProtocolV2ReqeustMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
-		requestParam := &Request{
-			Param: message.GoStructRef,
-		}
-		message.GoStructRef = requestParam
-		err = message.Next()
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	return p
+func ProtocolV2ReqeustMiddle(message *apihttpprotocol.Message) (err error) {
+	requestParam := &Request{
+		Param: message.GoStructRef,
+	}
+	message.GoStructRef = requestParam
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-var ProtocolV2ResponseMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
-		requestMessage := message.GetRequestMessage()
-		if requestMessage == nil {
-			err = errors.New("请求上下文丢失")
-			return err
-		}
-		request, ok := requestMessage.GoStructRef.(*Request)
-		if !ok {
-			err = errors.New("请求上下文类型不正确")
-			return err
-		}
-		respone := &Response{
-			Head: Head{
-				Version:       request.Head.Version,
-				MsgType:       "response",
-				Timestamps:    cast.ToString(time.Now().Local().Unix()),
-				InvokeId:      request.Head.InvokeId,
-				CallerService: request.Head.CallerService,
-				GroupNo:       request.Head.GroupNo,
-				Interface:     request.Head.Interface,
-				Remark:        "respone",
+func ProtocolV2ResponseMiddle(message *apihttpprotocol.Message) (err error) {
+	requestMessage, ok := message.GetRequestMessage()
+	if ok {
+		err = errors.New("请求上下文丢失")
+		return err
+	}
+	request, ok := requestMessage.GoStructRef.(*Request)
+	if !ok {
+		err = errors.New("请求上下文类型不正确")
+		return err
+	}
+	respone := &Response{
+		Head: Head{
+			Version:       request.Head.Version,
+			MsgType:       "response",
+			Timestamps:    cast.ToString(time.Now().Local().Unix()),
+			InvokeId:      request.Head.InvokeId,
+			CallerService: request.Head.CallerService,
+			GroupNo:       request.Head.GroupNo,
+			Interface:     request.Head.Interface,
+			Remark:        "respone",
+		},
+		Data: Data{
+			BusinessError: BusinessError{
+				Ret:     "0",
+				ErrCode: cast.ToString(message.Metadata.GetWithDefault(serverprotocol.BusinessCode, "0")),
+				ErrStr:  "success",
 			},
-			Data: Data{
-				BusinessError: BusinessError{
-					Ret:     "0",
-					ErrCode: message.GetBusinessCodeWithDefault("0"),
-					ErrStr:  "success",
-				},
-				Data: message.GoStructRef,
-			},
-		}
+			Data: message.GoStructRef,
+		},
+	}
 
-		if message.ResponseError != nil {
-			respone.Data.Ret = "1"
-			respone.Data.ErrCode = message.GetBusinessCodeWithDefault("1")
-			respone.Data.ErrStr = message.ResponseError.Error()
-		}
+	if message.ResponseError != nil {
+		respone.Data.Ret = "1"
+		respone.Data.ErrCode = cast.ToString(message.Metadata.GetWithDefault(serverprotocol.BusinessCode, "1"))
+		respone.Data.ErrStr = message.ResponseError.Error()
+	}
 
-		message.GoStructRef = respone
-		err = message.Next()
-		if err != nil {
-			return err
-		}
-		return nil
-	})
-	return p
+	message.GoStructRef = respone
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	return nil
 }

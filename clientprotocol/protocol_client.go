@@ -89,17 +89,6 @@ func (c *ClientProtocol) GetHttpCode() int {
 	return httpCode
 }
 
-type Option = apihttpprotocol.Option[ClientProtocol]
-
-type OptionFunc = apihttpprotocol.OptionFunc[ClientProtocol]
-
-func (p *ClientProtocol) Apply(options ...Option) *ClientProtocol {
-	for _, option := range options {
-		p = option.Apply(p)
-	}
-	return p
-}
-
 func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
 	c.request.SetHeader(key, value)
 
@@ -138,19 +127,28 @@ func RestyClientWithSignalClose(client *resty.Client) *resty.Client {
 
 }
 
+const (
+	MetaData_CurlCmd = "curl_cmd"
+)
+
 func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 	req := restyClientFn().R()
 	req = req.SetMethod(method).SetURL(url) //部分接口不需要设置请求体,不会执行writeFn,又因为输出请求日志在readFn前,必须设置好,请求方法和地址,所以就在外部设置好
 	readFn := func(message *apihttpprotocol.Message) (err error) {
 		curl := req.CurlCmd() //curl依赖 req 变量,所以不独立成middle
 		if curl != "" {
-			message.GetLog().Info(curl)
+			reqMessage, ok := message.GetRequestMessage()
+			if ok {
+				reqMessage.Metadata.Set(MetaData_CurlCmd, curl) // 发送请求日志，放到请求消息中触发，方便理解
+				reqMessage.GetLog().Info(curl)
+			}
 		}
 		response, err := req.Send()
 		if err != nil {
 			return err
 		}
 		body := response.Bytes()
+		message.SetRaw(body)
 		httpCode := response.StatusCode()
 		if httpCode != http.StatusOK {
 			err = errors.Errorf("http code:%d,response body:%s", httpCode, string(body))

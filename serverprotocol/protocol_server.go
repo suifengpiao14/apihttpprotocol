@@ -46,30 +46,6 @@ func (p *ServerProtocol) SetLog(log apihttpprotocol.LogI) *ServerProtocol {
 	return p
 }
 
-type Option = apihttpprotocol.Option[ServerProtocol]
-
-type OptionFunc = apihttpprotocol.OptionFunc[ServerProtocol]
-
-func (p *ServerProtocol) Apply(options ...Option) *ServerProtocol {
-	for _, option := range options {
-		p = option.Apply(p)
-	}
-	return p
-}
-
-//ApplyRequestMiddleware 添加请求中间件，这个函数属于底层函数,供中间件封装使用，不建议直接调用，业务开发建议使用 ServerProtocol.Apply()
-
-// func (p *ServerProtocol) ApplyRequestMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
-// 	p.request.AddMiddleware(middlewares...)
-// 	return p
-// }
-
-// ApplyResponseMiddleware 添加响应中间件，这个函数属于底层函数,供中间件封装使用，不建议直接调用，业务开发建议使用 ServerProtocol.Apply()
-// func (p *ServerProtocol) ApplyResponseMiddleware(middlewares ...apihttpprotocol.HandlerFunc) *ServerProtocol {
-// 	p.response.AddMiddleware(middlewares...)
-// 	return p
-// }
-
 func (p *ServerProtocol) ResponseSuccess(data any) {
 	err := p.writeResponse(data)
 	if err != nil {
@@ -160,11 +136,20 @@ func NewGinHander[I any, O any](protoFn func() *ServerProtocol, handler func(in 
 	}
 }
 
+var (
+	Business_Code_Success = "0"
+	Business_Code_Fail    = "1"
+)
+
 type Response struct {
-	Code    int    `json:"code"`
+	Code    string `json:"code"`
 	Message string `json:"message"`
 	Data    any    `json:"data"`
 }
+
+var (
+	BusinessCode = "businessCode"
+)
 
 func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
 	response := &Response{
@@ -172,12 +157,12 @@ func CodeMessageResponseMiddle(message *apihttpprotocol.Message) error {
 	}
 	err := message.ResponseError
 	if err != nil {
-		response.Code = 1
+		response.Code = Business_Code_Fail
 		response.Message = err.Error()
 	}
-	businessCode, exists := message.GetBusinessCode()
+	businessCode, exists := message.Metadata.Get(BusinessCode)
 	if exists {
-		response.Code = cast.ToInt(businessCode)
+		response.Code = cast.ToString(businessCode)
 	}
 	message.GoStructRef = response
 	err = message.Next()

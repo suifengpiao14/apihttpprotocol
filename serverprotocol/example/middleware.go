@@ -12,31 +12,27 @@ import (
 	translations "github.com/go-playground/validator/v10/translations/zh"
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/apihttpprotocol"
-	"github.com/suifengpiao14/apihttpprotocol/serverprotocol"
 )
 
 // ValidateHeaderMiddle 验证头部传参，但是不验证签名
 
-var ValidateHeaderMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
-		err = message.Next()
-		if err != nil {
-			return err
-		}
-		callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
-		if callerId == "" {
-			err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
-			return err
-		}
+func ValidateHeaderMiddle(message *apihttpprotocol.Message) (err error) {
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
+	if callerId == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
+		return err
+	}
 
-		inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
-		if inputSign == "" {
-			err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
-			return err
-		}
-		return nil
-	})
-	return p
+	inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
+	if inputSign == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
+		return err
+	}
+	return nil
 }
 
 type CallerService struct {
@@ -62,36 +58,33 @@ func (cs CallerServices) GetCallerService(callerId string) (callerService *Calle
 var CallerServicesPool = CallerServices{} // 启用签名时，需要配置CallerServicesPool
 
 // 签名算法
-var CheckRequestSignatureMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
-		err = message.Next()
-		if err != nil {
-			return err
-		}
-		callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
-		if callerId == "" {
-			err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
-			return err
-		}
+func CheckRequestSignatureMiddle(message *apihttpprotocol.Message) (err error) {
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	callerId := message.GetHeader(Http_header_HSB_OPENAPI_CALLERSERVICEID)
+	if callerId == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_CALLERSERVICEID值为空或不存在!")
+		return err
+	}
 
-		inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
-		if inputSign == "" {
-			err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
-			return err
-		}
-		caller, err := CallerServicesPool.GetCallerService(callerId)
-		if err != nil {
-			return err
-		}
-		body := string(message.GetRaw())
-		sign := apiSign(body, caller.CallerServiceKey)
-		if sign != inputSign {
-			err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
-			return err
-		}
-		return nil
-	})
-	return p
+	inputSign := message.GetHeader(Http_header_HSB_OPENAPI_SIGNATURE)
+	if inputSign == "" {
+		err = errors.New("http协议头部HTTP_HSB_OPENAPI_SIGNATURE为空或者不存在!")
+		return err
+	}
+	caller, err := CallerServicesPool.GetCallerService(callerId)
+	if err != nil {
+		return err
+	}
+	body := string(message.GetRaw())
+	sign := apiSign(body, caller.CallerServiceKey)
+	if sign != inputSign {
+		err = fmt.Errorf("签名校验失败，期望值：%s,实际值:%s", sign, inputSign)
+		return err
+	}
+	return nil
 }
 
 // 返回json真实名
@@ -105,32 +98,29 @@ func getStructJsonTag(fld reflect.StructField) string {
 	return fld.Name
 }
 
-var ValidateRequestMiddle serverprotocol.OptionFunc = func(p *serverprotocol.ServerProtocol) *serverprotocol.ServerProtocol {
-	p.Request().AddMiddleware(func(message *apihttpprotocol.Message) (err error) {
-		err = message.Next() //读取数据后
-		if err != nil {
-			return err
-		}
-		validate := validator.New()
-		validate.RegisterTagNameFunc(getStructJsonTag)
+func ValidateRequestMiddle(message *apihttpprotocol.Message) (err error) {
+	err = message.Next() //读取数据后
+	if err != nil {
+		return err
+	}
+	validate := validator.New()
+	validate.RegisterTagNameFunc(getStructJsonTag)
 
-		err = validate.Struct(message.GoStructRef)
-		if errors.Is(err, &validator.InvalidValidationError{}) {
-			err = nil // 如果message.GoStructRef 不为结构体，忽略验证，方便支持map[string]any 等格式的请求参数
-		}
-		if err != nil {
-			//验证器注册翻译器
-			uni := ut.New(zh.New())
-			trans, _ := uni.GetTranslator("zh")
-			_ = translations.RegisterDefaultTranslations(validate, trans)
+	err = validate.Struct(message.GoStructRef)
+	if errors.Is(err, &validator.InvalidValidationError{}) {
+		err = nil // 如果message.GoStructRef 不为结构体，忽略验证，方便支持map[string]any 等格式的请求参数
+	}
+	if err != nil {
+		//验证器注册翻译器
+		uni := ut.New(zh.New())
+		trans, _ := uni.GetTranslator("zh")
+		_ = translations.RegisterDefaultTranslations(validate, trans)
 
-			for _, verr := range err.(validator.ValidationErrors) {
-				return errors.New(verr.Translate(trans))
-			}
+		for _, verr := range err.(validator.ValidationErrors) {
+			return errors.New(verr.Translate(trans))
 		}
-		return nil
-	})
-	return p
+	}
+	return nil
 }
 
 const (
