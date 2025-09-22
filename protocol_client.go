@@ -92,7 +92,7 @@ var sharedTransport = &http.Transport{
 	MaxIdleConnsPerHost: 1000,
 	IdleConnTimeout:     90 * time.Second,
 }
-var NewRestyClient = sync.OnceValue(func() (client *resty.Client) {
+var newRestyClient = sync.OnceValue(func() (client *resty.Client) {
 
 	client = resty.New()
 	// 通用配置
@@ -105,17 +105,17 @@ var NewRestyClient = sync.OnceValue(func() (client *resty.Client) {
 	return client
 })
 
-func GetRestyClient() *resty.Client {
+func getRestyClient() *resty.Client {
 	ctx := context.Background()
-	return NewRestyClient().Clone(ctx)
+	return newRestyClient().Clone(ctx)
 }
 
 const (
 	MetaData_CurlCmd = "curl_cmd"
 )
 
-func NewRestyClientProtocol(method string, url string) *ClientProtocol {
-	client := GetRestyClient()
+func NewClientProtocol(method string, url string) *ClientProtocol {
+	client := getRestyClient()
 	var req *resty.Request
 	readFn := func(message *ResponseMessage) (err error) {
 		response, err := req.Send()
@@ -170,7 +170,7 @@ func NewRestyClientProtocol(method string, url string) *ClientProtocol {
 		}
 		httpReq.Header = message.Headers
 
-		req, err = HTTPRequestToResty(client, httpReq)
+		req, err = httpRequestToResty(client, httpReq)
 		if err != nil {
 			return err
 		}
@@ -200,8 +200,8 @@ func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
 	return nil
 }
 
-// HTTPRequestToResty 将已有的 *http.Request 转换成 *resty.Request
-func HTTPRequestToResty(client *resty.Client, req *http.Request) (*resty.Request, error) {
+// httpRequestToResty 将已有的 *http.Request 转换成 *resty.Request
+func httpRequestToResty(client *resty.Client, req *http.Request) (*resty.Request, error) {
 	r := client.R()
 	// 设置 Method 和 URL
 	r.SetMethod(req.Method)
