@@ -122,22 +122,26 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		if err != nil {
 			return err
 		}
-		err = message.SetDuplicateResponse(response.RawResponse)
+		body := response.Bytes()
+		err = message.SetDuplicateResponse(response.RawResponse, body)
 		if err != nil {
 			return err
 		}
-		body := response.Bytes()
-		message.SetRaw(body)
 		httpCode := response.StatusCode()
 		if httpCode != http.StatusOK {
-			err = errors.Errorf("http code:%d,response body:%s", httpCode, string(body))
+			err = errors.Errorf("request_url:%s http code:%d,response body:%s", url, httpCode, string(body))
 			return err
 		}
 		message.Metadata.Set(MetaData_HttpCode, httpCode)
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
+				if ok := json.Valid(body); !ok {
+					err = errors.Errorf("request_url:%s response body is not valid json:%s", url, string(body))
+					return err
+				}
 				err = json.Unmarshal(body, message.GoStructRef)
 				if err != nil {
+
 					return err
 				}
 			}

@@ -101,7 +101,7 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 	}
 	writeFn = func(message *ResponseMessage) (err error) {
 		c.JSON(http.StatusOK, message.GoStructRef)
-		message.SetDuplicateResponse(c.Request.Response)
+		message.SetDuplicateResponse(c.Request.Response, nil)
 		return nil
 	}
 	return readFn, writeFn

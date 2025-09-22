@@ -47,15 +47,28 @@ func CopyRequest(r *http.Request) (copyRequest *http.Request, err error) {
 }
 
 // CopyResponse 深拷贝 http.Response，Body 可重复读取
-func CopyResponse(resp *http.Response) (copyResponse *http.Response, err error) {
+func CopyResponse(resp *http.Response, body []byte) (copyResponse *http.Response, err error) {
 	if resp == nil {
 		return nil, nil
 	}
-	var bodyCopy io.ReadCloser
-	body := resp.Body
+	respCopy := *resp // 浅拷贝结构体
+	respCopy.Header = deepCopyHeader(resp.Header)
+	respCopy.Trailer = deepCopyHeader(resp.Trailer)
+	respCopy.Request, err = CopyRequest(resp.Request)
+	if err != nil {
+		return nil, err
+	}
 	if body != nil {
-		defer body.Close()
-		data, err := io.ReadAll(body)
+		respCopy.Body = io.NopCloser(bytes.NewBuffer(body))
+		return &respCopy, nil // 如果有 body，则直接返回
+	}
+
+	var bodyCopy io.ReadCloser
+	bodyReader := resp.Body
+	if bodyReader != nil {
+		defer bodyReader.Close()
+		var data []byte
+		data, err = io.ReadAll(bodyReader)
 		if err != nil {
 			return nil, err
 		}
@@ -64,15 +77,7 @@ func CopyResponse(resp *http.Response) (copyResponse *http.Response, err error) 
 		// 复制用 body
 		bodyCopy = io.NopCloser(bytes.NewBuffer(data))
 	}
-
-	respCopy := *resp // 浅拷贝结构体
-	respCopy.Request, err = CopyRequest(resp.Request)
-	if err != nil {
-		return nil, err
-	}
 	respCopy.Body = bodyCopy
-	respCopy.Header = deepCopyHeader(resp.Header)
-	respCopy.Trailer = deepCopyHeader(resp.Trailer)
 
 	return &respCopy, nil
 }

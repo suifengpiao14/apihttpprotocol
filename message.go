@@ -117,7 +117,7 @@ type Message[T any] struct {
 	Context context.Context
 	Headers http.Header
 	//RequestParams   map[string]string
-	raw             []byte // 原始请求或响应数据，可用于签名校验等场景
+	bodyBtyes       []byte // 原始请求或响应数据，可用于签名校验等场景
 	GoStructRef     any    // 可以用于存储请求参数或响应结果
 	Metadata        Metadata
 	MiddlewareFuncs MiddlewareFuncs[T] // 中间件调用链
@@ -172,15 +172,18 @@ func (m *ResponseMessage) GetDuplicateResponse() (duplicateResponse *http.Respon
 	if m.duplicateResponse == nil {
 		return nil, false
 	}
-	duplicateResponse, err := CopyResponse(m.duplicateResponse)
+	duplicateResponse, err := CopyResponse(m.duplicateResponse, m.bodyBtyes)
 	if err != nil {
 		return nil, false
 	}
 	return duplicateResponse, true
 }
 
-func (m *ResponseMessage) SetDuplicateResponse(response *http.Response) (err error) {
-	duplicateResponse, err := CopyResponse(response)
+func (m *ResponseMessage) SetDuplicateResponse(response *http.Response, body []byte) (err error) { // 这里显示传入原始的body，便于使用者明确传递，如果直接从m.raw读取，使用者需要先了解逻辑，先设置m.raw,再使用，比较复杂
+	if body != nil {
+		m.bodyBtyes = body
+	}
+	duplicateResponse, err := CopyResponse(response, m.bodyBtyes)
 	if err != nil {
 		return err
 	}
@@ -223,15 +226,15 @@ func (m *Message[T]) SetIOReader(ioFn HandlerFunc[T]) *Message[T] {
 }
 
 func (m *Message[T]) SetRaw(b []byte) {
-	m.raw = b
+	m.bodyBtyes = b
 }
 
 func (m *Message[T]) GetRaw() []byte {
-	if m.raw != nil {
-		return m.raw
+	if m.bodyBtyes != nil {
+		return m.bodyBtyes
 	}
 
-	return m.raw
+	return m.bodyBtyes
 }
 func (m *Message[T]) GetIOReader() (ioFn HandlerFunc[T]) {
 	if m._IOReader == nil {
@@ -314,7 +317,7 @@ func RequestMiddleLog(message *RequestMessage) (err error) {
 		message.GetLog().Error("http2curl.GetCurlCommand", err1)
 	}
 	requestId := message.GetRequestId()
-	msg := fmt.Sprintf("request: requestId:%s;curlCommand: %s", requestId, curlCommand.String())
+	msg := fmt.Sprintf("url:%s,request: requestId:%s;curlCommand: %s", duplicateReq.URL.String(), requestId, curlCommand.String())
 	message.GetLog().Info(msg)
 
 	return nil
@@ -334,7 +337,8 @@ func ResponseMiddleLog(message *ResponseMessage) (err error) {
 		defer duplicateRsp.Body.Close()
 		body, _ = io.ReadAll(duplicateRsp.Body)
 	}
-	msg := fmt.Sprintf("response: httpCode: %d;body:%s", duplicateRsp.StatusCode, string(body))
+	req := duplicateRsp.Request
+	msg := fmt.Sprintf("url:%s,response: httpCode: %d;body:%s", req.URL.String(), duplicateRsp.StatusCode, string(body))
 	message.GetLog().Info(msg)
 
 	return nil
