@@ -364,7 +364,7 @@ func ResponseMiddleLog(message *ResponseMessage) (err error) {
 	return nil
 }
 
-func RequestMiddleSetLog(log LogI) HandlerFuncRequestMessage {
+func RequestMiddleSetLog(log LogI) HandlerFunc[RequestMessage] {
 	return func(message *RequestMessage) (err error) {
 		message.SetLog(log)
 		err = message.Next()
@@ -372,7 +372,7 @@ func RequestMiddleSetLog(log LogI) HandlerFuncRequestMessage {
 	}
 }
 
-func ResponseMiddleSetLog(log LogI) HandlerFuncResponseMessage {
+func ResponseMiddleSetLog(log LogI) HandlerFunc[ResponseMessage] {
 	return func(message *ResponseMessage) (err error) {
 		message.SetLog(log)
 		err = message.Next()
