@@ -268,18 +268,8 @@ func (m *Message[T]) Back() *Message[T] {
 // 定义中间件函数类型，与Gin的HandlerFunc对应
 type HandlerFunc[T any] func(message *T) (err error)
 
-// github.com/traefik/yaegi 不支持泛型，不利于动态脚本集成，所以这里改成非泛型形式
-// type HandlerFuncRequestMessage = HandlerFunc[RequestMessage]
-// type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
-type HandlerFuncRequestMessage func(message *RequestMessage) (err error)
-type HandlerFuncResponseMessage func(message *ResponseMessage) (err error)
-
-func (hr HandlerFuncRequestMessage) HandlerFunc() HandlerFunc[RequestMessage] {
-	return HandlerFunc[RequestMessage](hr)
-}
-func (hr HandlerFuncResponseMessage) HandlerFunc() HandlerFunc[ResponseMessage] {
-	return HandlerFunc[ResponseMessage](hr)
-}
+type HandlerFuncRequestMessage = HandlerFunc[RequestMessage]
+type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
 
 // Next 传递控制权给下一个中间件
 // 实现逻辑：索引+1并执行下一个中间件

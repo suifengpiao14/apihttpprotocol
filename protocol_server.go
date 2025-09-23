@@ -24,8 +24,8 @@ func NewServerProtocol() *ServerProtocol {
 }
 
 func (p *ServerProtocol) WithIOFn(reder HandlerFuncRequestMessage, writer HandlerFuncResponseMessage) *ServerProtocol {
-	p.Request().SetIOReader(reder.HandlerFunc())
-	p.Response().SetIOWriter(writer.HandlerFunc())
+	p.Request().SetIOReader(reder)
+	p.Response().SetIOWriter(writer)
 	return p
 }
 
