@@ -268,15 +268,29 @@ func (m *Message[T]) Back() *Message[T] {
 // 定义中间件函数类型，与Gin的HandlerFunc对应
 type HandlerFunc[T any] func(message *T) (err error)
 
-type HandlerFuncRequestMessage = HandlerFunc[RequestMessage]
-type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
+// github.com/traefik/yaegi 不支持泛型，不利于动态脚本集成，所以这里改成非泛型形式
+// type HandlerFuncRequestMessage = HandlerFunc[RequestMessage]
+// type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
+type HandlerFuncRequestMessage func(message *RequestMessage) (err error)
+type HandlerFuncResponseMessage func(message *ResponseMessage) (err error)
+
+func (hr HandlerFuncRequestMessage) HandlerFunc() HandlerFunc[RequestMessage] {
+	return HandlerFunc[RequestMessage](hr)
+}
+func (hr HandlerFuncResponseMessage) HandlerFunc() HandlerFunc[ResponseMessage] {
+	return HandlerFunc[ResponseMessage](hr)
+}
 
 // Next 传递控制权给下一个中间件
 // 实现逻辑：索引+1并执行下一个中间件
 func (m *Message[T]) Next() (err error) {
 	m.index++
 	if m.index < len(m.MiddlewareFuncs) {
-		err = m.MiddlewareFuncs[m.index](m.self)
+		fn := m.MiddlewareFuncs[m.index]
+		if fn == nil {
+			return m.Next() //如果当前fn为空，则继续执行下一个fn
+		}
+		err = fn(m.self)
 		if err != nil {
 			return err
 		}
@@ -299,7 +313,13 @@ func (ms *MiddlewareFuncs[T]) Add(fns ...HandlerFunc[T]) *MiddlewareFuncs[T] {
 	if *ms == nil {
 		*ms = MiddlewareFuncs[T]{}
 	}
-	*ms = append(*ms, fns...)
+	arr := make([]HandlerFunc[T], 0)
+	for _, fn := range fns {
+		if fn != nil {
+			arr = append(arr, fn)
+		}
+	}
+	*ms = append(*ms, arr...)
 	return ms
 }
 

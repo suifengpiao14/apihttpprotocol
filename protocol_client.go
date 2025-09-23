@@ -26,8 +26,8 @@ func NewClitentProtocol() *ClientProtocol {
 }
 
 func (p *ClientProtocol) WithIOFn(reder HandlerFuncResponseMessage, writer HandlerFuncRequestMessage) *ClientProtocol {
-	p.request.SetIOWriter(writer)
-	p.response.SetIOReader(reder)
+	p.request.SetIOWriter(writer.HandlerFunc())
+	p.response.SetIOReader(reder.HandlerFunc())
 	return p
 }
 
