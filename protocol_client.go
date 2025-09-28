@@ -159,6 +159,15 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		if message.GoStructRef != nil {
 			b, err := json.Marshal(message.GoStructRef)
 			if err != nil {
+				ref := message.GoStructRef
+				switch byt := ref.(type) {
+				case []byte:
+					ref = string(byt)
+				case json.RawMessage:
+					ref = string(byt)
+				}
+				err = errors.WithMessagef(err, `json.Marshal(%v)`, ref)
+
 				return err
 			}
 			buf = bytes.NewBuffer(b)
