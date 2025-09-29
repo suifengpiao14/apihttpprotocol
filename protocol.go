@@ -1,6 +1,9 @@
 package apihttpprotocol
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type _Protocol struct {
 	request  *RequestMessage
@@ -8,15 +11,22 @@ type _Protocol struct {
 }
 
 func newProtocol() _Protocol {
+	now := time.Now().Local()
 	p := _Protocol{
 		request: &RequestMessage{
 			Message: Message[RequestMessage]{
 				Context: context.Background(),
+				Metadata: Metadata{
+					"timeNow": now,
+				},
 			},
 		},
 		response: &ResponseMessage{
 			Message: Message[ResponseMessage]{
 				Context: context.Background(),
+				Metadata: Metadata{
+					"timeNow": now,
+				},
 			},
 		},
 	}

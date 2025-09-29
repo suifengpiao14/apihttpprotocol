@@ -118,6 +118,11 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 	client := getRestyClient()
 	var req *resty.Request
 	readFn := func(message *ResponseMessage) (err error) {
+		requestMessage, ok := message.GetRequestMessage()
+		if !ok {
+			err = errors.Errorf("requestMessage is nil")
+			return err
+		}
 		response, err := req.Send()
 		if err != nil {
 			return err
@@ -129,14 +134,14 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		}
 		httpCode := response.StatusCode()
 		if httpCode != http.StatusOK {
-			err = errors.Errorf("request_url:%s http code:%d,response body:%s", url, httpCode, string(body))
+			err = errors.Errorf("request_mesage:%s http code:%d,response body:%s", requestMessage.String(), httpCode, string(body))
 			return err
 		}
 		message.Metadata.Set(MetaData_HttpCode, httpCode)
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
 				if ok := json.Valid(body); !ok {
-					err = errors.Errorf("request_url:%s response body is not valid json:%s", url, string(body))
+					err = errors.Errorf("request_message:%s response body is not valid json:%s", requestMessage.String(), string(body))
 					return err
 				}
 				err = json.Unmarshal(body, message.GoStructRef)
@@ -171,12 +176,12 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 				return err
 			}
 			buf = bytes.NewBuffer(b)
-			httpReq, err = http.NewRequest(method, url, buf)
+			httpReq, err = http.NewRequest(message.Method, message.URL, buf)
 			if err != nil {
 				return err
 			}
 		} else {
-			httpReq, err = http.NewRequest(method, url, nil)
+			httpReq, err = http.NewRequest(message.Method, message.URL, nil)
 			if err != nil {
 				return err
 			}
@@ -194,6 +199,8 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	}
 	clientProtocol := NewClitentProtocol().WithIOFn(readFn, writeFn)
+	clientProtocol.Request().URL = url
+	clientProtocol.Request().Method = method
 	return clientProtocol
 }
 

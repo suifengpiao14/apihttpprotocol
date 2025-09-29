@@ -114,13 +114,13 @@ var ERRIOFnIsNil = errors.New("io function is nil")
 // 定义Message结构体（用户提供）
 type Message[T any] struct {
 	self    *T
-	Context context.Context
-	Headers http.Header
+	Context context.Context `json:"-"` // 上下文信息，例如请求ID、用户信息等
+	Headers http.Header     `json:"headers"`
 	//RequestParams   map[string]string
-	bodyBtyes       []byte // 原始请求或响应数据，可用于签名校验等场景
-	GoStructRef     any    // 可以用于存储请求参数或响应结果
-	Metadata        Metadata
-	MiddlewareFuncs MiddlewareFuncs[T] // 中间件调用链
+	bodyBtyes       []byte             // 原始请求或响应数据，可用于签名校验等场景
+	GoStructRef     any                `json:"goStructRef"` // 可以用于存储请求参数或响应结果
+	Metadata        Metadata           `json:"metadata"`    // 存储一些额外的信息，例如请求ID、用户信息等
+	MiddlewareFuncs MiddlewareFuncs[T] `json:"-"`           // 中间件调用链
 	index           int                // 当前执行的中间件索引，类似Gin的index
 
 	_IOReader HandlerFunc[T]
@@ -135,8 +135,8 @@ func (m *Message[T]) Self() *T {
 
 type RequestMessage struct {
 	Message[RequestMessage]
-	URL              string           // 请求URL
-	Method           string           // 请求方法
+	URL              string           `json:"url"`    // 请求URL
+	Method           string           `json:"method"` // 请求方法
 	responseMessage  *ResponseMessage // 响应消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
 	duplicateRequest *http.Request
 }
@@ -167,6 +167,15 @@ func (m *RequestMessage) SetDuplicateRequest(reqest *http.Request) (err error) {
 	m.duplicateRequest = duplicateRequest
 	return nil
 }
+func (m *RequestMessage) String() string {
+	b, err := json.Marshal(m)
+	if err != nil {
+		err = errors.WithMessage(err, "RequestMessage")
+		return err.Error()
+	}
+	s := string(b)
+	return s
+}
 
 func (m *ResponseMessage) GetDuplicateResponse() (duplicateResponse *http.Response, exists bool) {
 	if m.duplicateResponse == nil {
@@ -189,6 +198,16 @@ func (m *ResponseMessage) SetDuplicateResponse(response *http.Response, body []b
 	}
 	m.duplicateResponse = duplicateResponse
 	return nil
+}
+
+func (m *ResponseMessage) String() string {
+	b, err := json.Marshal(m)
+	if err != nil {
+		err = errors.WithMessage(err, "ResponseMessage")
+		return err.Error()
+	}
+	s := string(b)
+	return s
 }
 
 func (m *Message[T]) SetLog(log LogI) *Message[T] {
