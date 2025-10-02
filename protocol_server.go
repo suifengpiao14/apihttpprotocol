@@ -126,6 +126,25 @@ func NewGinHander[I any, O any](protoFn func() *ServerProtocol, handler func(in 
 	}
 }
 
+func NewGinCommandHander[I any](protoFn func() *ServerProtocol, handler func(in I) (err error)) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		proto := protoFn() //每次请求需要重新创建协议对象，防止并发安全问题
+		proto.WithIOFn(NewGinReadWriteMiddleware(c))
+		var in I
+		err := proto.ReadRequest(&in)
+		if err != nil {
+			proto.ResponseFail(err)
+			return
+		}
+		err = handler(in)
+		if err != nil {
+			proto.ResponseFail(err)
+			return
+		}
+		proto.ResponseSuccess(nil)
+	}
+}
+
 var (
 	Business_Code_Success = "0"
 	Business_Code_Fail    = "1"
