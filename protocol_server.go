@@ -39,7 +39,7 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 	request := p.Request()
 	request.GoStructRef = dst
-	request.MiddlewareFuncs.Add(request.GetIOReader())
+	request.middlewareFuncs.Add(request.GetIOReader())
 	err = request.Run()
 	if err != nil {
 		return err
@@ -50,7 +50,7 @@ func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 func (p *ServerProtocol) writeResponse(data any) (err error) {
 	response := p.Response()
 	response.GoStructRef = data
-	response.MiddlewareFuncs.Add(response.GetIOWriter())
+	response.middlewareFuncs.Add(response.GetIOWriter())
 	err = response.Run()
 	if err != nil {
 		return err
@@ -180,7 +180,7 @@ func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 		response.Code = Business_Code_Fail
 		response.Message = err.Error()
 	}
-	businessCode, exists := message.Metadata.Get(BusinessCode)
+	businessCode, exists := message.metaData.Get(BusinessCode)
 	if exists {
 		response.Code = cast.ToString(businessCode)
 	}

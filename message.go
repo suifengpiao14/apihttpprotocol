@@ -17,9 +17,9 @@ const (
 	//MetaData_RequestID = "requestID"
 )
 
-type Metadata map[string]any
+type MetaData map[string]any
 
-func (m *Metadata) GetWithDefault(key string, defau any) any {
+func (m *MetaData) GetWithDefault(key string, defau any) any {
 	v, exists := m.Get(key)
 	if !exists {
 		return defau
@@ -27,7 +27,7 @@ func (m *Metadata) GetWithDefault(key string, defau any) any {
 	return v
 }
 
-func (m *Metadata) Get(key string) (value any, exists bool) {
+func (m *MetaData) Get(key string) (value any, exists bool) {
 	if m == nil || *m == nil {
 		return nil, false
 	}
@@ -35,7 +35,7 @@ func (m *Metadata) Get(key string) (value any, exists bool) {
 	return v, ok
 }
 
-func (m *Metadata) Set(key string, value any) {
+func (m *MetaData) Set(key string, value any) {
 	if m == nil {
 		return
 	}
@@ -46,7 +46,7 @@ func (m *Metadata) Set(key string, value any) {
 }
 
 func (m *Message[T]) SetMetaData(key string, value any) {
-	m.Metadata.Set(key, value)
+	m.metaData.Set(key, value)
 }
 func (m *Message[T]) SetHeader(key string, value string) {
 	if m.Headers == nil {
@@ -105,7 +105,7 @@ func (m *ResponseMessage) GetRequestId() (requestId string) {
 }
 
 func (m *Message[T]) AddMiddleware(middlewares ...HandlerFunc[T]) *Message[T] {
-	m.MiddlewareFuncs.Add(middlewares...)
+	m.middlewareFuncs.Add(middlewares...)
 	return m
 }
 
@@ -119,8 +119,8 @@ type Message[T any] struct {
 	//RequestParams   map[string]string
 	bodyBtyes       []byte             // 原始请求或响应数据，可用于签名校验等场景
 	GoStructRef     any                `json:"goStructRef"` // 可以用于存储请求参数或响应结果
-	Metadata        Metadata           `json:"metadata"`    // 存储一些额外的信息，例如请求ID、用户信息等
-	MiddlewareFuncs MiddlewareFuncs[T] `json:"-"`           // 中间件调用链
+	metaData        MetaData           // 存储一些额外的信息，例如请求ID、用户信息等
+	middlewareFuncs MiddlewareFuncs[T] `json:"-"` // 中间件调用链
 	index           int                // 当前执行的中间件索引，类似Gin的index
 
 	_IOReader HandlerFunc[T]
@@ -294,8 +294,8 @@ type HandlerFuncResponseMessage = HandlerFunc[ResponseMessage]
 // 实现逻辑：索引+1并执行下一个中间件
 func (m *Message[T]) Next() (err error) {
 	m.index++
-	if m.index < len(m.MiddlewareFuncs) {
-		fn := m.MiddlewareFuncs[m.index]
+	if m.index < len(m.middlewareFuncs) {
+		fn := m.middlewareFuncs[m.index]
 		if fn == nil {
 			return m.Next() //如果当前fn为空，则继续执行下一个fn
 		}

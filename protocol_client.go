@@ -59,7 +59,7 @@ func (c *ClientProtocol) Do(requestData any, resp any) (err error) {
 
 func (c *ClientProtocol) _WriteRequest(data any) (err error) {
 	c.request.GoStructRef = data
-	c.request.MiddlewareFuncs.Add(c.request.GetIOWriter())
+	c.request.middlewareFuncs.Add(c.request.GetIOWriter())
 	err = c.request.Run()
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (c *ClientProtocol) _WriteRequest(data any) (err error) {
 }
 func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
 	c.response.GoStructRef = dst
-	c.response.MiddlewareFuncs.Add(c.response.GetIOReader())
+	c.response.middlewareFuncs.Add(c.response.GetIOReader())
 	err = c.response.Run()
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
 }
 
 func (c *ClientProtocol) GetHttpCode() int {
-	httpCode := cast.ToInt(c.response.Metadata.GetWithDefault(MetaData_HttpCode, 0))
+	httpCode := cast.ToInt(c.response.metaData.GetWithDefault(MetaData_HttpCode, 0))
 	return httpCode
 }
 
@@ -137,7 +137,7 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 			err = errors.Errorf("request_mesage:%s http code:%d,response body:%s", requestMessage.String(), httpCode, string(body))
 			return err
 		}
-		message.Metadata.Set(MetaData_HttpCode, httpCode)
+		message.metaData.Set(MetaData_HttpCode, httpCode)
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
 				if ok := json.Valid(body); !ok {
