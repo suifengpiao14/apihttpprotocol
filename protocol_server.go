@@ -173,7 +173,9 @@ var (
 
 func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 	response := &Response{
-		Data: message.goStructRef,
+		Code:    Business_Code_Success,
+		Message: "success",
+		Data:    message.goStructRef,
 	}
 	err := message.ResponseError
 	if err != nil {
