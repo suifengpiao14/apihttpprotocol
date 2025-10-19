@@ -58,7 +58,7 @@ func (c *ClientProtocol) Do(requestData any, resp any) (err error) {
 }
 
 func (c *ClientProtocol) _WriteRequest(data any) (err error) {
-	c.request.GoStructRef = data
+	c.request.goStructRef = data
 	c.request.middlewareFuncs.Add(c.request.GetIOWriter())
 	err = c.request.Run()
 	if err != nil {
@@ -67,7 +67,7 @@ func (c *ClientProtocol) _WriteRequest(data any) (err error) {
 	return nil
 }
 func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
-	c.response.GoStructRef = dst
+	c.response.goStructRef = dst
 	c.response.middlewareFuncs.Add(c.response.GetIOReader())
 	err = c.response.Run()
 	if err != nil {
@@ -138,13 +138,13 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 			return err
 		}
 		message.metaData.Set(MetaData_HttpCode, httpCode)
-		if message.GoStructRef != nil {
+		if message.goStructRef != nil {
 			if len(body) > 0 {
 				if ok := json.Valid(body); !ok {
 					err = errors.Errorf("request_message:%s response body is not valid json:%s", requestMessage.String(), string(body))
 					return err
 				}
-				err = json.Unmarshal(body, message.GoStructRef)
+				err = json.Unmarshal(body, message.goStructRef)
 				if err != nil {
 
 					return err
@@ -161,10 +161,10 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 	writeFn := func(message *RequestMessage) (err error) {
 		var buf *bytes.Buffer
 		var httpReq *http.Request
-		if message.GoStructRef != nil {
-			b, err := json.Marshal(message.GoStructRef)
+		if message.goStructRef != nil {
+			b, err := json.Marshal(message.goStructRef)
 			if err != nil {
-				ref := message.GoStructRef
+				ref := message.goStructRef
 				switch byt := ref.(type) {
 				case []byte:
 					ref = string(byt)
@@ -186,7 +186,7 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 				return err
 			}
 		}
-		httpReq.Header = message.Headers
+		httpReq.Header = message.headers
 
 		req, err = httpRequestToResty(client, httpReq)
 		if err != nil {
@@ -206,9 +206,9 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 
 func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
 	response := &Response{
-		Data: message.GoStructRef,
+		Data: message.goStructRef,
 	}
-	message.GoStructRef = response
+	message.goStructRef = response
 	err = message.Next()
 	if err != nil {
 		return err

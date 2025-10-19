@@ -49,17 +49,17 @@ func (m *Message[T]) SetMetaData(key string, value any) {
 	m.metaData.Set(key, value)
 }
 func (m *Message[T]) SetHeader(key string, value string) {
-	if m.Headers == nil {
-		m.Headers = http.Header{}
+	if m.headers == nil {
+		m.headers = http.Header{}
 	}
-	m.Headers.Add(key, value)
+	m.headers.Add(key, value)
 }
 
 func (m *Message[T]) GetHeader(key string) (value string) {
-	if m.Headers == nil {
-		m.Headers = http.Header{}
+	if m.headers == nil {
+		m.headers = http.Header{}
 	}
-	return m.Headers.Get(key)
+	return m.headers.Get(key)
 }
 func (m *Message[T]) SetRequestId(requestId string) *Message[T] {
 	m.requestId = requestId
@@ -114,13 +114,13 @@ var ERRIOFnIsNil = errors.New("io function is nil")
 // 定义Message结构体（用户提供）
 type Message[T any] struct {
 	self    *T
-	Context context.Context `json:"-"` // 上下文信息，例如请求ID、用户信息等
-	Headers http.Header     `json:"headers"`
+	context context.Context // 上下文信息，例如请求ID、用户信息等
+	headers http.Header
 	//RequestParams   map[string]string
 	bodyBtyes       []byte             // 原始请求或响应数据，可用于签名校验等场景
-	GoStructRef     any                `json:"goStructRef"` // 可以用于存储请求参数或响应结果
+	goStructRef     any                // 可以用于存储请求参数或响应结果
 	metaData        MetaData           // 存储一些额外的信息，例如请求ID、用户信息等
-	middlewareFuncs MiddlewareFuncs[T] `json:"-"` // 中间件调用链
+	middlewareFuncs MiddlewareFuncs[T] // 中间件调用链
 	index           int                // 当前执行的中间件索引，类似Gin的index
 
 	_IOReader HandlerFunc[T]
@@ -131,6 +131,33 @@ type Message[T any] struct {
 
 func (m *Message[T]) Self() *T {
 	return m.self
+}
+
+// 增加messageString 是因为Message 要尽量少对外暴露的字段，所以增加一个内部结构体来做转换。
+type messageString struct {
+	Headers     http.Header `json:"headers"`
+	GoStructRef any         `json:"goStructRef"`
+	MetaData    MetaData    `json:"metaData"`
+	RequestId   string      `json:"requestId"`
+}
+
+func (m *Message[T]) toStringStruct() messageString {
+	return messageString{
+		Headers:     m.headers,
+		GoStructRef: m.goStructRef,
+		MetaData:    m.metaData,
+		RequestId:   m.requestId,
+	}
+}
+
+func (m *Message[T]) String() string {
+	mstr := m.toStringStruct()
+	b, err := json.Marshal(mstr)
+	if err != nil {
+		return err.Error()
+	}
+	s := string(b)
+	return s
 }
 
 type RequestMessage struct {
@@ -167,8 +194,24 @@ func (m *RequestMessage) SetDuplicateRequest(reqest *http.Request) (err error) {
 	m.duplicateRequest = duplicateRequest
 	return nil
 }
+
+type requestMessageString struct {
+	messageString
+	URL    string `json:"url"`
+	Method string `json:"method"`
+}
+
+func (m *RequestMessage) toStringStruct() requestMessageString {
+	return requestMessageString{
+		messageString: m.Message.toStringStruct(),
+		URL:           m.URL,
+		Method:        m.Method,
+	}
+}
+
 func (m *RequestMessage) String() string {
-	b, err := json.Marshal(m)
+	mstr := m.toStringStruct()
+	b, err := json.Marshal(mstr)
 	if err != nil {
 		err = errors.WithMessage(err, "RequestMessage")
 		return err.Error()
@@ -201,7 +244,8 @@ func (m *ResponseMessage) SetDuplicateResponse(response *http.Response, body []b
 }
 
 func (m *ResponseMessage) String() string {
-	b, err := json.Marshal(m)
+	mstr := m.toStringStruct()
+	b, err := json.Marshal(mstr)
 	if err != nil {
 		err = errors.WithMessage(err, "ResponseMessage")
 		return err.Error()

@@ -38,7 +38,7 @@ func (p *ServerProtocol) ResponseSuccess(data any) {
 
 func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 	request := p.Request()
-	request.GoStructRef = dst
+	request.goStructRef = dst
 	request.middlewareFuncs.Add(request.GetIOReader())
 	err = request.Run()
 	if err != nil {
@@ -49,7 +49,7 @@ func (p *ServerProtocol) ReadRequest(dst any) (err error) {
 
 func (p *ServerProtocol) writeResponse(data any) (err error) {
 	response := p.Response()
-	response.GoStructRef = data
+	response.goStructRef = data
 	response.middlewareFuncs.Add(response.GetIOWriter())
 	err = response.Run()
 	if err != nil {
@@ -96,11 +96,11 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 		for k, v := range c.Request.Header {
 			message.SetHeader(k, v[0])
 		}
-		err = json.Unmarshal(b, &message.GoStructRef)
+		err = json.Unmarshal(b, &message.goStructRef)
 		return err
 	}
 	writeFn = func(message *ResponseMessage) (err error) {
-		c.JSON(http.StatusOK, message.GoStructRef)
+		c.JSON(http.StatusOK, message.goStructRef)
 		message.SetDuplicateResponse(c.Request.Response, nil)
 		return nil
 	}
@@ -173,7 +173,7 @@ var (
 
 func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 	response := &Response{
-		Data: message.GoStructRef,
+		Data: message.goStructRef,
 	}
 	err := message.ResponseError
 	if err != nil {
@@ -184,7 +184,7 @@ func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 	if exists {
 		response.Code = cast.ToString(businessCode)
 	}
-	message.GoStructRef = response
+	message.goStructRef = response
 	err = message.Next()
 	if err != nil {
 		return err
