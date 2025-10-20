@@ -16,7 +16,7 @@ func newProtocol() _Protocol {
 		request: &RequestMessage{
 			Message: Message[RequestMessage]{
 				context: context.Background(),
-				metaData: MetaData{
+				MetaData: MetaData{
 					"timeNow": now,
 				},
 			},
@@ -24,7 +24,7 @@ func newProtocol() _Protocol {
 		response: &ResponseMessage{
 			Message: Message[ResponseMessage]{
 				context: context.Background(),
-				metaData: MetaData{
+				MetaData: MetaData{
 					"timeNow": now,
 				},
 			},
