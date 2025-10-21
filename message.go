@@ -159,6 +159,41 @@ type ResponseMessage struct {
 	duplicateResponse *http.Response
 }
 
+func (msg ResponseMessage) GetBusinessCode() string {
+	return getBusinessCode(msg.ResponseError)
+}
+
+var (
+	BusinessMessage_Success = "success"
+)
+
+func (msg ResponseMessage) GetBusinessMessage() string {
+	s := BusinessMessage_Success
+	if msg.ResponseError != nil {
+		s = msg.ResponseError.Error()
+	}
+	return s
+}
+
+// 带有错误码的错误信息接口
+type ErrorWithCode interface {
+	GetCode() string
+	error
+}
+
+// GetBusinessCode 提取业务码，如果错误实现了ErrorWithCode接口，则返回其代码；否则返回默认的失败码。
+func getBusinessCode(err error) (code string) {
+	if err == nil {
+		return Business_Code_Success
+	}
+	switch v := err.(type) {
+	case ErrorWithCode:
+		return v.GetCode()
+	default:
+		return Business_Code_Fail
+	}
+}
+
 func (m *RequestMessage) GetDuplicateRequest() (duplicateRequest *http.Request, exists bool) {
 	if m.duplicateRequest == nil {
 		return nil, false

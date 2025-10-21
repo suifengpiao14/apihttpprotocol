@@ -8,7 +8,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
-	"github.com/spf13/cast"
 )
 
 type ServerProtocol struct {
@@ -168,26 +167,17 @@ func (rsp *Response) Validate() (err error) {
 }
 
 var (
-	BusinessCode = "businessCode"
+// BusinessCode = "businessCode"
 )
 
 func ResponseMiddleCodeMessageForServer(message *ResponseMessage) error {
 	response := &Response{
-		Code:    Business_Code_Success,
-		Message: "success",
+		Code:    message.GetBusinessCode(),
+		Message: message.GetBusinessMessage(),
 		Data:    message.GoStructRef,
 	}
-	err := message.ResponseError
-	if err != nil {
-		response.Code = Business_Code_Fail
-		response.Message = err.Error()
-	}
-	businessCode, exists := message.MetaData.Get(BusinessCode)
-	if exists {
-		response.Code = cast.ToString(businessCode)
-	}
 	message.GoStructRef = response
-	err = message.Next()
+	err := message.Next()
 	if err != nil {
 		return err
 	}
