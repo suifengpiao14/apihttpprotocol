@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"moul.io/http2curl"
 )
@@ -66,20 +67,20 @@ func (m *Message[T]) SetRequestId(requestId string) *Message[T] {
 	return m
 }
 func (m *RequestMessage) GetRequestId() (requestId string) {
-	defer func() {
-		if requestId == "" {
-			requestId = "unknown" // 将空值转换为未知，便于调试追踪问题。
+	if m.RequestId == "" {
+		dumpReq, ok := m.GetDuplicateRequest()
+		if ok {
+			m.RequestId = dumpReq.Header.Get("X-Request-Id")
 		}
-	}()
-	if m.RequestId != "" {
-		return ""
 	}
-	dumpReq, ok := m.GetDuplicateRequest()
-	if !ok {
-		return ""
+	if m.RequestId == "" {
+		m.RequestId = fmt.Sprintf("new-%s", uuid.New().String())
+		if m.duplicateRequest != nil {
+			m.duplicateRequest.Header.Add("X-Request-Id", m.RequestId)
+		}
 	}
-	requestId = dumpReq.Header.Get("X-Request-Id")
-	return requestId
+
+	return m.RequestId
 }
 
 func (m *ResponseMessage) GetRequestId() (requestId string) {
@@ -88,9 +89,15 @@ func (m *ResponseMessage) GetRequestId() (requestId string) {
 			requestId = "unknown" // 将空值转换为未知，便于调试追踪问题。
 		}
 	}()
+
 	if m.RequestId != "" {
-		return ""
+		return m.RequestId
 	}
+
+	if m.requestMessage != nil {
+		return m.requestMessage.GetRequestId()
+	}
+
 	dumpResp, ok := m.GetDuplicateResponse()
 	if !ok {
 		return ""
@@ -399,11 +406,18 @@ func RequestMiddleLog(message *RequestMessage) (err error) {
 	return nil
 }
 
+var ResponseBodyLogMaxLen = 512 // 响应体最大长度，超过则截断
+
 func ResponseMiddleLog(message *ResponseMessage) (err error) {
 	err = message.Next() //读取数据后
 	if err != nil {
 		return err
 	}
+	if message.ResponseError != nil {
+		message.GetLog().Error(fmt.Sprintf("requestId:%s,response error:%s", message.GetRequestId(), message.ResponseError.Error()))
+		return nil
+	}
+
 	duplicateRsp, ok := message.GetDuplicateResponse()
 	if !ok {
 		return nil
@@ -414,7 +428,10 @@ func ResponseMiddleLog(message *ResponseMessage) (err error) {
 		body, _ = io.ReadAll(duplicateRsp.Body)
 	}
 	req := duplicateRsp.Request
-	msg := fmt.Sprintf("url:%s,response: httpCode: %d;body:%s", req.URL.String(), duplicateRsp.StatusCode, string(body))
+	if len(body) > ResponseBodyLogMaxLen {
+		body = body[:ResponseBodyLogMaxLen]
+	}
+	msg := fmt.Sprintf("requestId:%s,url:%s,response: httpCode: %d;body:%s", message.GetRequestId(), req.URL.String(), duplicateRsp.StatusCode, string(body))
 	message.GetLog().Info(msg)
 
 	return nil

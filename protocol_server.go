@@ -1,6 +1,7 @@
 package apihttpprotocol
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -99,8 +100,33 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 		return err
 	}
 	writeFn = func(message *ResponseMessage) (err error) {
-		c.JSON(http.StatusOK, message.GoStructRef)
-		message.SetDuplicateResponse(c.Request.Response, nil)
+		duplicateResponse := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+		}
+		if message.requestMessage != nil {
+			duplicateResponse.Request, _ = message.requestMessage.GetDuplicateRequest()
+		}
+		requestId := message.GetRequestId()
+		c.Header("X-Request-Id", requestId)
+		duplicateResponse.Header.Add("X-Request-Id", requestId)
+		var b []byte
+		if message.GoStructRef != nil {
+			b, err = json.Marshal(message.GoStructRef)
+			if err != nil {
+				return err
+			}
+		}
+
+		body := string(b)
+
+		c.String(http.StatusOK, body)
+
+		if body != "" {
+			duplicateResponse.Body = io.NopCloser(bytes.NewReader([]byte(body)))
+		}
+
+		message.SetDuplicateResponse(duplicateResponse, nil)
 		return nil
 	}
 	return readFn, writeFn
