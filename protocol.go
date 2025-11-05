@@ -2,6 +2,7 @@ package apihttpprotocol
 
 import (
 	"context"
+	"net/http"
 	"time"
 )
 
@@ -19,6 +20,7 @@ func newProtocol() _Protocol {
 				MetaData: MetaData{
 					"timeNow": now,
 				},
+				Headers: http.Header{},
 			},
 		},
 		response: &ResponseMessage{
@@ -27,6 +29,7 @@ func newProtocol() _Protocol {
 				MetaData: MetaData{
 					"timeNow": now,
 				},
+				Headers: http.Header{},
 			},
 		},
 	}
