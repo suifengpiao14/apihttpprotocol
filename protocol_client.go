@@ -1,9 +1,8 @@
 package apihttpprotocol
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -105,49 +104,77 @@ var newRestyClient = sync.OnceValue(func() (client *resty.Client) {
 	return client
 })
 
-func getRestyClient() *resty.Client {
-	ctx := context.Background()
-	return newRestyClient().Clone(ctx)
+func newClient(timeout time.Duration) (client *http.Client) {
+	client = &http.Client{
+		Transport: sharedTransport,
+		Timeout:   timeout,
+	}
+	return client
 }
 
 const (
 	MetaData_CurlCmd = "curl_cmd"
 )
 
+type ResponseError struct {
+	HttpCode    int
+	CurlCommand string
+	Body        string
+}
+
+func (re ResponseError) Error() string {
+	s := fmt.Sprintf(`httpCode:%d,body:%s`, re.HttpCode, re.Body)
+	return s
+}
+
 func NewClientProtocol(method string, url string) *ClientProtocol {
-	client := getRestyClient()
-	var req *resty.Request
+	client := newClient(10 * time.Second)
+	var req *http.Request
 	readFn := func(message *ResponseMessage) (err error) {
 		requestMessage, ok := message.GetRequestMessage()
 		if !ok {
 			err = errors.Errorf("requestMessage is nil")
 			return err
 		}
-		response, err := req.Send()
+		response, err := client.Do(req)
 		if err != nil {
 			return err
 		}
-		body := response.Bytes()
-		err = message.SetDuplicateResponse(response.RawResponse, body)
+		var body []byte
+		if response.Body != nil {
+			defer response.Body.Close()
+			body, err = io.ReadAll(response.Body)
+			if err != nil {
+				return err
+			}
+		}
+		message.SetRaw(body) //保存网络返回
+
+		err = message.SetDuplicateResponse(response, body)
 		if err != nil {
 			return err
 		}
-		httpCode := response.StatusCode()
-		if httpCode != http.StatusOK {
-			err = errors.Errorf("request_mesage:%s http code:%d,response body:%s", requestMessage.String(), httpCode, string(body))
-			return err
-		}
+		httpCode := response.StatusCode
 		message.MetaData.Set(MetaData_HttpCode, httpCode)
+		if httpCode != http.StatusOK {
+			responseError := ResponseError{
+				HttpCode:    httpCode,
+				CurlCommand: requestMessage.CurlCommand(),
+				Body:        string(body),
+			}
+			return responseError
+		}
+
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
-				if ok := json.Valid(body); !ok {
-					err = errors.Errorf("request_message:%s response body is not valid json:%s", requestMessage.String(), string(body))
-					return err
-				}
 				err = json.Unmarshal(body, message.GoStructRef)
 				if err != nil {
-
-					return err
+					responseError := ResponseError{
+						HttpCode:    httpCode,
+						CurlCommand: requestMessage.CurlCommand(),
+						Body:        fmt.Sprintf("response body is not valid json,body:%s", string(body)),
+					}
+					return responseError
 				}
 			}
 		}
@@ -159,40 +186,11 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		return nil
 	}
 	writeFn := func(message *RequestMessage) (err error) {
-		var buf *bytes.Buffer
-		var httpReq *http.Request
-		if message.GoStructRef != nil {
-			b, err := json.Marshal(message.GoStructRef)
-			if err != nil {
-				ref := message.GoStructRef
-				switch byt := ref.(type) {
-				case []byte:
-					ref = string(byt)
-				case json.RawMessage:
-					ref = string(byt)
-				}
-				err = errors.WithMessagef(err, `json.Marshal(%v)`, ref)
-
-				return err
-			}
-			buf = bytes.NewBuffer(b)
-			httpReq, err = http.NewRequest(message.Method, message.URL, buf)
-			if err != nil {
-				return err
-			}
-		} else {
-			httpReq, err = http.NewRequest(message.Method, message.URL, nil)
-			if err != nil {
-				return err
-			}
-		}
-		httpReq.Header = message.Headers
-
-		req, err = httpRequestToResty(client, httpReq)
+		req, err = message.ToRequest()
 		if err != nil {
 			return err
 		}
-		err = message.SetDuplicateRequest(httpReq) // resty.Request 在req.Send()之前，取不到req.Request 值，这里暂时先构造
+		err = message.SetDuplicateRequest(req)
 		if err != nil {
 			return err
 		}
@@ -221,25 +219,25 @@ func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
 }
 
 // httpRequestToResty 将已有的 *http.Request 转换成 *resty.Request
-func httpRequestToResty(client *resty.Client, req *http.Request) (*resty.Request, error) {
-	r := client.R()
-	// 设置 Method 和 URL
-	r.SetMethod(req.Method)
-	r.SetURL(req.URL.String())
-	r.SetHeaderMultiValues(req.Header)
-	bodyReadCloser := req.Body
-	// 设置 Body
-	if bodyReadCloser != nil {
-		defer bodyReadCloser.Close()
-		body, err := io.ReadAll(bodyReadCloser)
-		if err != nil {
-			return nil, err
-		}
-		r.SetBody(body)
-		// 重置原 request Body，防止后续重复读取失败
-		req.Body = io.NopCloser(bytes.NewReader(body))
-	}
+// func httpRequestToResty(client *resty.Client, req *http.Request) (*resty.Request, error) {
+// 	r := client.R()
+// 	// 设置 Method 和 URL
+// 	r.SetMethod(req.Method)
+// 	r.SetURL(req.URL.String())
+// 	r.SetHeaderMultiValues(req.Header)
+// 	bodyReadCloser := req.Body
+// 	// 设置 Body
+// 	if bodyReadCloser != nil {
+// 		defer bodyReadCloser.Close()
+// 		body, err := io.ReadAll(bodyReadCloser)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		r.SetBody(body)
+// 		// 重置原 request Body，防止后续重复读取失败
+// 		req.Body = io.NopCloser(bytes.NewReader(body))
+// 	}
 
-	r = r.SetCookies(req.Cookies())
-	return r, nil
-}
+// 	r = r.SetCookies(req.Cookies())
+// 	return r, nil
+// }

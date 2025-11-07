@@ -2,6 +2,7 @@
 package apihttpprotocol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -201,6 +202,39 @@ func getBusinessCode(err error) (code string) {
 	}
 }
 
+func (m *RequestMessage) ToRequest() (req *http.Request, err error) {
+	var buf *bytes.Buffer
+	var httpReq *http.Request
+	if m.GoStructRef != nil {
+		switch ref := m.GoStructRef.(type) {
+		case []byte:
+			buf = bytes.NewBuffer(ref)
+		case json.RawMessage:
+			buf = bytes.NewBuffer(ref)
+		case string:
+			buf = bytes.NewBufferString(ref)
+		default:
+			b, err := json.Marshal(m.GoStructRef)
+			if err != nil {
+				err = errors.WithMessagef(err, `json.Marshal(%v)`, m.GoStructRef)
+				return nil, err
+			}
+			buf = bytes.NewBuffer(b)
+		}
+		httpReq, err = http.NewRequest(m.Method, m.URL, buf)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		httpReq, err = http.NewRequest(m.Method, m.URL, nil)
+		if err != nil {
+			return nil, err
+		}
+	}
+	httpReq.Header = m.Headers
+	return httpReq, nil
+}
+
 func (m *RequestMessage) GetDuplicateRequest() (duplicateRequest *http.Request, exists bool) {
 	if m.duplicateRequest == nil {
 		return nil, false
@@ -231,6 +265,19 @@ func (m *RequestMessage) String() string {
 	return s
 }
 
+func (m *RequestMessage) CurlCommand() string {
+	req, exists := m.GetDuplicateRequest()
+	if exists {
+		curlCommand, err := http2curl.GetCurlCommand(req)
+		if err != nil {
+			return err.Error()
+		}
+		curl := curlCommand.String()
+		return curl
+
+	}
+	return ""
+}
 func (m *ResponseMessage) GetDuplicateResponse() (duplicateResponse *http.Response, exists bool) {
 	if m.duplicateResponse == nil {
 		return nil, false
@@ -431,7 +478,7 @@ func ResponseMiddleLog(message *ResponseMessage) (err error) {
 	if len(body) > ResponseBodyLogMaxLen {
 		body = body[:ResponseBodyLogMaxLen]
 	}
-	msg := fmt.Sprintf("requestId:%s,url:%s,response: httpCode: %d;body:%s", message.GetRequestId(), req.URL.String(), duplicateRsp.StatusCode, string(body))
+	msg := fmt.Sprintf("requestId:%s,url:%s,response httpCode: %d;body:%s", message.GetRequestId(), req.URL.String(), duplicateRsp.StatusCode, string(body))
 	message.GetLog().Info(msg)
 
 	return nil
