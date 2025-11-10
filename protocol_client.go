@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/spf13/cast"
 	"resty.dev/v3"
 )
 
@@ -73,11 +72,6 @@ func (c *ClientProtocol) _ReadResponse(dst any) (err error) {
 		return err
 	}
 	return nil
-}
-
-func (c *ClientProtocol) GetHttpCode() int {
-	httpCode := cast.ToInt(c.response.MetaData.GetWithDefault(MetaData_HttpCode, 0))
-	return httpCode
 }
 
 func (c *ClientProtocol) SetHeader(key string, value string) *ClientProtocol {
@@ -155,7 +149,7 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 			return err
 		}
 		httpCode := response.StatusCode
-		message.MetaData.Set(MetaData_HttpCode, httpCode)
+		message.HttpCode = httpCode
 		if httpCode != http.StatusOK {
 			responseError := ResponseError{
 				HttpCode:    httpCode,

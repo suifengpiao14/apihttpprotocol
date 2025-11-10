@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	MetaData_HttpCode = "httpCode"
-	//MetaData_RequestID = "requestID"
+// MetaData_HttpCode = "httpCode"
+// MetaData_RequestID = "requestID"
 )
 
 type MetaData map[string]any
@@ -165,6 +165,7 @@ type ResponseMessage struct {
 	ResponseError     error           // 记录返回错误
 	requestMessage    *RequestMessage // 请求消息，用于在中间件中获取原始请求参数(在response里面,这个参数才有值)
 	duplicateResponse *http.Response
+	HttpCode          int `json:"httpCode"` // 响应状态码
 }
 
 func (msg ResponseMessage) GetBusinessCode() string {
