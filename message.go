@@ -448,7 +448,7 @@ func RequestMiddleLog(message *RequestMessage) (err error) {
 		message.GetLog().Error("http2curl.GetCurlCommand", err1)
 	}
 	requestId := message.GetRequestId()
-	msg := fmt.Sprintf("url:%s,request: requestId:%s;curlCommand: %s", duplicateReq.URL.String(), requestId, curlCommand.String())
+	msg := fmt.Sprintf("request: requestId:%s;curlCommand: %s", requestId, curlCommand.String())
 	message.GetLog().Info(msg)
 
 	return nil
