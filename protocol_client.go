@@ -16,7 +16,7 @@ type ClientProtocol struct {
 	_Protocol
 }
 
-func NewClitentProtocol() *ClientProtocol {
+func _NewClientProtocol() *ClientProtocol {
 	p := &ClientProtocol{
 		_Protocol: newProtocol(),
 	}
@@ -190,7 +190,7 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 		}
 		return nil
 	}
-	clientProtocol := NewClitentProtocol().WithIOFn(readFn, writeFn)
+	clientProtocol := _NewClientProtocol().WithIOFn(readFn, writeFn)
 	clientProtocol.Request().URL = url
 	clientProtocol.Request().Method = method
 	return clientProtocol
