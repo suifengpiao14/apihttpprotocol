@@ -161,8 +161,17 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 
 		if message.GoStructRef != nil {
 			if len(body) > 0 {
-				err = json.Unmarshal(body, message.GoStructRef)
-				if err != nil {
+				if json.Valid(body) { // 暂时只解析json格式的响应体
+					err = json.Unmarshal(body, message.GoStructRef)
+					if err != nil {
+						responseError := ResponseError{
+							HttpCode:    httpCode,
+							CurlCommand: requestMessage.CurlCommand(),
+							Body:        fmt.Sprintf("response body json.Unmarshal  err:%s,body:%s", err.Error(), string(body)),
+						}
+						return responseError
+					}
+				} else {
 					responseError := ResponseError{
 						HttpCode:    httpCode,
 						CurlCommand: requestMessage.CurlCommand(),
@@ -170,6 +179,7 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 					}
 					return responseError
 				}
+
 			}
 		}
 		err = message.Next()
