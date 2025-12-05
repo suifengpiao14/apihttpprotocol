@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"reflect"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/pkg/errors"
+	"github.com/spf13/cast"
 	"resty.dev/v3"
 )
 
@@ -204,6 +209,44 @@ func NewClientProtocol(method string, url string) *ClientProtocol {
 	clientProtocol.Request().URL = url
 	clientProtocol.Request().Method = method
 	return clientProtocol
+}
+
+func RequestMiddleEncodeBody(message *RequestMessage) (err error) {
+	if message.GoStructRef == nil {
+		return message.Next()
+	}
+	rt := reflect.Indirect(reflect.ValueOf(message.GoStructRef)).Type()
+	switch rt.Kind() {
+	case reflect.Struct:
+		contentType := message.Headers.Get("Content-Type")
+		if strings.Contains(contentType, "application/x-www-form-urlencoded") { // 表单提交
+			values := url.Values{}
+			m := map[string]any{}
+			decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+				ZeroFields: true,
+				Result:     &m,
+				TagName:    "json",
+			})
+			if err != nil {
+				return err
+			}
+			err = decoder.Decode(message.GoStructRef)
+			if err != nil {
+				return err
+			}
+
+			for k, v := range m {
+				values.Add(k, cast.ToString(v))
+			}
+
+			message.GoStructRef = values.Encode()
+		}
+	}
+	err = message.Next()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func ResponseMiddleCodeMessageForClient(message *ResponseMessage) (err error) {
