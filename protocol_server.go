@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
@@ -81,7 +82,13 @@ type ContextReqeustMessageKeyType string
 
 //NewGinSerivceProtocol 这个函数注销，因为在客户端用于生成Android客户端时，不需要这个函数，尽量减少依赖
 
+var (
+	ContentTypeForceJson = true // 强制json，如果请求头中没有指定ContentType为application/json,则认为是application/json (兼容历史)
+
+)
+
 func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage, writeFn HandlerFuncResponseMessage) {
+	var contentType string
 	readFn = func(message *RequestMessage) (err error) {
 		err = message.SetDuplicateRequest(c.Request)
 		if err != nil {
@@ -96,7 +103,16 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 		for k, v := range c.Request.Header {
 			message.SetHeader(k, v[0])
 		}
-		err = json.Unmarshal(b, &message.GoStructRef)
+		contentType = c.Request.Header.Get("Content-Type")
+		if strings.Contains(contentType, ContentTypeJson) || ContentTypeForceJson {
+			if len(b) == 0 {
+				return nil
+			}
+			err = json.Unmarshal(b, &message.GoStructRef)
+			if err != nil {
+				return err
+			}
+		}
 		return err
 	}
 	writeFn = func(message *ResponseMessage) (err error) {
@@ -112,9 +128,11 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 		duplicateResponse.Header.Add("X-Request-Id", requestId)
 		var b []byte
 		if message.GoStructRef != nil {
-			b, err = json.Marshal(message.GoStructRef)
-			if err != nil {
-				return err
+			if strings.Contains(contentType, ContentTypeJson) || ContentTypeForceJson {
+				b, err = json.Marshal(message.GoStructRef)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
