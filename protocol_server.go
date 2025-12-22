@@ -87,6 +87,53 @@ var (
 
 )
 
+func readInput(req *http.Request, dst any) (err error) {
+
+	ioReader := req.Body
+	var body []byte
+	if ioReader != nil {
+		body, err = io.ReadAll(ioReader)
+		if err != nil {
+			return err
+		}
+		ioReader.Close()                               // 关闭请求体，防止内存泄漏
+		req.Body = io.NopCloser(bytes.NewReader(body)) // 重新赋值，共后续form读取二次读取
+	}
+
+	err = req.ParseForm()
+	if err != nil {
+		return err
+	}
+	m := map[string]string{}
+
+	for k, v := range req.Form {
+		m[k] = v[0] // 先简单处理，获取第一个，后续再优化处理数组情况
+	}
+	if len(m) > 0 {
+		b, err := json.Marshal(m)
+		if err != nil {
+			return err
+		}
+		err = json.Unmarshal(b, dst)
+		if err != nil {
+			return err
+
+		}
+	}
+
+	if len(body) > 0 {
+		contentType := req.Header.Get("Content-Type") // 这里为了支持 ContentTypeForceJson ,所以先读取
+		if strings.Contains(contentType, ContentTypeJson) || ContentTypeForceJson {
+			err = json.Unmarshal(body, &dst) // 如果url上有和body参数同名的，会使用body的参数覆盖url上的同名参数
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage, writeFn HandlerFuncResponseMessage) {
 	var contentType string
 	readFn = func(message *RequestMessage) (err error) {
@@ -94,25 +141,16 @@ func NewGinReadWriteMiddleware(c *gin.Context) (readFn HandlerFuncRequestMessage
 		if err != nil {
 			return err
 		}
-		ioReader := c.Request.Body
-		b, err := io.ReadAll(ioReader)
+		req := c.Request
+		err = readInput(req, message.GoStructRef)
 		if err != nil {
-			return err
+			return nil
 		}
-		defer c.Request.Body.Close() // 关闭请求体，防止内存泄漏
+
 		for k, v := range c.Request.Header {
 			message.SetHeader(k, v[0])
 		}
-		contentType = c.Request.Header.Get("Content-Type")
-		if strings.Contains(contentType, ContentTypeJson) || ContentTypeForceJson {
-			if len(b) == 0 {
-				return nil
-			}
-			err = json.Unmarshal(b, &message.GoStructRef)
-			if err != nil {
-				return err
-			}
-		}
+
 		return err
 	}
 	writeFn = func(message *ResponseMessage) (err error) {
