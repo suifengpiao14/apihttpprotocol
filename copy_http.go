@@ -25,23 +25,21 @@ func CopyRequest(r *http.Request) (copyRequest *http.Request, err error) {
 	if r == nil {
 		return nil, nil
 	}
-	var bodyCopy io.ReadCloser
+	// 基于原始 request 克隆
+	reqCopy := r.Clone(r.Context())
+
+	reqCopy.Header = r.Header.Clone()
+	reqCopy.Trailer = deepCopyHeader(r.Trailer)
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
-			return nil, err
+			return reqCopy, err // CopyResponse 时会忽略err，但是需要reqCopy ，所以这里同步返回reqCopy
 		}
 		// 恢复原始 request
 		r.Body = io.NopCloser(bytes.NewBuffer(data))
 		// 复制用 body
-		bodyCopy = io.NopCloser(bytes.NewBuffer(data))
+		reqCopy.Body = io.NopCloser(bytes.NewBuffer(data))
 	}
-
-	// 基于原始 request 克隆
-	reqCopy := r.Clone(r.Context())
-	reqCopy.Body = bodyCopy
-	reqCopy.Header = r.Header.Clone()
-	reqCopy.Trailer = deepCopyHeader(r.Trailer)
 
 	return reqCopy, nil
 }
@@ -54,10 +52,10 @@ func CopyResponse(resp *http.Response, body []byte) (copyResponse *http.Response
 	respCopy := *resp // 浅拷贝结构体
 	respCopy.Header = deepCopyHeader(resp.Header)
 	respCopy.Trailer = deepCopyHeader(resp.Trailer)
-	respCopy.Request, err = CopyRequest(resp.Request)
-	if err != nil {
-		return nil, err
-	}
+	respCopy.Request, _ = CopyRequest(resp.Request) // request 可能已经被读取，所以需要忽略错误
+	// if err != nil {
+	// 	return nil, err
+	// }
 	if body != nil {
 		respCopy.Body = io.NopCloser(bytes.NewBuffer(body))
 		return &respCopy, nil // 如果有 body，则直接返回
